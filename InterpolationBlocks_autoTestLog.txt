@@ -1,0 +1,6 @@
+autotest report by InterpolationBlocks_unit.pas
+07.02.25 16:53:41
+BEGIN
+test1     Ok
+test2     Ok
+END of autotest routine log file
