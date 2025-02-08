@@ -22,7 +22,7 @@ interface
 
 uses {$IFNDEF FPC}Windows,{$ENDIF}
      Classes, MBTYArrays, DataTypes, DataObjts, SysUtils, abstract_im_interface, RunObjts, Math, LinFuncs,
-     tbls, Data_blocks, InterpolFuncs, mbty_std_consts, uExtMath;
+     tbls, Data_blocks, InterpolFuncs, mbty_std_consts, uExtMath, InterpolationBlocks_unit;
 
 
 type
@@ -95,6 +95,10 @@ begin
   x_tab:=TExtArray2.Create(1,1);
   y_tab:=TExtArray2.Create(1,1);
   SplineIsNatural:=True;
+
+  // запуск автотеста
+  TFndimFunctionByPoints1d_testAll();
+
 end;
 
 destructor   TInterpolationBlock1.Destroy;
