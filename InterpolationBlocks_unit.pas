@@ -35,7 +35,12 @@ type
     ApointsCount: NativeInt; // число заданных точек функции
     AFdim: NativeInt; // размер выходного вектора функции
     isBeginPointsEnter: Boolean; // состояние внутри вызовов beginPoints() и endPoints();
-    msFvalues, msXvalues :TMemoryStream;
+    msFvalues, msXvalues: TMemoryStream;
+    // переменные размерности выходного вектора для локального использования
+    Fval1,Fval2,Fval3,Fval4: DoubleArray;
+    // последний индекс, найденный при вызове функции поиска индекса интервала
+    // - скорее всего он корректен для следующего вызова
+    LastIntervalIndex: NativeInt;
   public
 
     constructor Create();
@@ -43,9 +48,6 @@ type
 
     // переустановить размерность выходного вектора
     procedure setFdim(NewDim: NativeInt);
-
-    // новая функция - удалить все старые точки точки
-    procedure ClearFunction;
 
     // обертки для чтения свойств
     function pointsCount: NativeInt;inline;
@@ -64,12 +66,14 @@ type
       noise,param1,param2: Double);
 
     // конструирование функции добавлением точек врукопашную
-    function beginPoints():Boolean; // вызвать перед началом работы
+    procedure beginPoints(); // вызвать перед началом работы
     procedure endPoints();
+    // удалить все старые точки точки
+    procedure ClearPoints;
     // добавить точку в набор точек функции
     function addPoint(x: Double; F: DoubleArray):Boolean;
-    function getPoint_Xi(Pindex: NativeInt): Double;
-    function getPoint_Fi(Pindex: NativeInt): PDouble;
+    function getPoint_Xi(Pindex: NativeInt): Double;inline;
+    function getPoint_Fi(Pindex: NativeInt): PDouble;inline;
 
     // поменять точки местами
     procedure swapPoints(i,j :NativeInt);
@@ -83,11 +87,11 @@ type
     function CmpWithFunction(Func2: TFndimFunctionByPoints1d): Double;
 
     // найти индекс точки - начала интервала, внутри которого лежит аргумент x
-    //function FindIntervalIndex_ofX(x: Double): NativeInt;
+    function FindIntervalIndex_ofX(x: Double): NativeInt;
     // найти значение функции по кусочно-постоянной интерполяции
-    //function IntervalInterpolation(x: Double): PDouble;
+    function IntervalInterpolation(x: Double): PDouble;
     // найти значение функции по линейной интерполяции
-    //function LinearInterpolation(x: Double): PDouble;
+    function LinearInterpolation(x: Double): PDouble;
   end;
 
 procedure TFndimFunctionByPoints1d_testAll();
@@ -110,11 +114,14 @@ begin
   inherited;
   FreeAndNil(msFvalues);
   FreeAndNil(msXvalues);
-
+  SetLength(Fval1, 0);
+  SetLength(Fval2, 0);
+  SetLength(Fval3, 0);
+  SetLength(Fval4, 0);
 end;
 
 // новая функция - удалить все старые точки точки
-procedure TFndimFunctionByPoints1d.ClearFunction;
+procedure TFndimFunctionByPoints1d.ClearPoints;
 begin
   ApointsCount := 0;
   msFvalues.Clear;
@@ -125,6 +132,11 @@ procedure TFndimFunctionByPoints1d.setFdim(NewDim: NativeInt);
 begin
   Assert(not((pointsCount>0)and(NewDim<>Fdim)),'Изменение размерности уже заданной точками функции');
   AFdim := NewDim;
+  // перераспределяем память локальных переменных.
+  SetLength(Fval1, NewDim);
+  SetLength(Fval2, NewDim);
+  SetLength(Fval3, NewDim);
+  SetLength(Fval4, NewDim);
 end;
 
 function TFndimFunctionByPoints1d.pointsCount: NativeInt;
@@ -170,17 +182,14 @@ procedure TFndimFunctionByPoints1d.addUserFunction(Xbegin,Xend: Double; NPoints:
 var
   i: NativeInt;
   x,dx: Double;
-  F:DoubleArray;
 begin
-  SetLength(F, 1);
-
   if StrEqu(kind,'sine') then begin
     dx := (Xend-Xbegin)/NPoints;
     beginPoints();
     for i:=0 to NPoints-1 do begin
       x := Xbegin+i*dx;
-      F[0] := sin(x)+(noise-0.5)*random();
-      addPoint(x,F);
+      Fval1[0] := sin(x)+(noise-0.5)*random();
+      addPoint(x, Fval1);
       end;
     endPoints();
   end;
@@ -190,21 +199,19 @@ begin
     beginPoints();
     for i:=0 to NPoints-1 do begin
       x := Xbegin+i*dx;
-      F[0] := param1*x+param2+(noise-0.5)*random();
-      addPoint(x,F);
+      Fval1[0] := param1*x+param2+(noise-0.5)*random();
+      addPoint(x, Fval1);
       end;
     endPoints();
   end;
 
-  SetLength(F, 0);
 end;
 
 // конструирование функции добавлением точек врукопашную
-function TFndimFunctionByPoints1d.beginPoints():Boolean;
+procedure TFndimFunctionByPoints1d.beginPoints();
 // вызвать перед началом работы по добавлению точек
 begin
   isBeginPointsEnter := True;
-  Result := True;
 end;
 
 procedure TFndimFunctionByPoints1d.endPoints();
@@ -263,7 +270,7 @@ begin
   //Move(Ybuf, Yptr[j], sizeof(Double)*Ylength);
   //SetLength(ybuf, 0);
 
-  // y stupid swap
+  // y brute stupid swap
   for k:=0 to Fdim-1 do begin
     yval := Fptr[i*Fdim+k];
     Fptr[i*Fdim+k] := Fptr[j*Fdim+k];
@@ -275,20 +282,32 @@ end;
 procedure TFndimFunctionByPoints1d.sortPoints();
 var
   i,j: NativeInt;
-  minXindex: NativeInt;
-  minXvalue,xj: Double;
+  maxXindex: NativeInt;
+  maxXvalue,xj: Double;
+  sortedFlag: Boolean;
 begin
+// сортируем массив с конца, ибо новые точки добавляются в конец. В цикле также проверяем
+// упорядоченность рассматриваемой части массива, если все упорядочено - завершаем работу досрочно.
 
-for i:=0 to pointsCount-2 do begin
-  minXvalue := getPoint_Xi(i);
-  minXindex := i;
-  for j:=i+1 to pointsCount-1 do begin
+for i:=pointsCount-1 downto 1 do begin
+  maxXvalue := getPoint_Xi(i);
+  maxXindex := i;
+  sortedFlag := True;
+  for j:=i-1 downto 0 do begin
     xj := getPoint_Xi(j);
-    if(xj<minXvalue) then begin
-      minXvalue:=xj; minXindex:=j;
+    if(xj>maxXvalue) then begin // найдено большее число
+      maxXvalue := xj;
+      maxXindex := j;
+      sortedFlag := False;
       end;
+
+    // есть неотсортированный точки, нужно сортировать еще
+    if xj>getPoint_Xi(j+1) then sortedFlag := False;
+
     end;
-  if(i<>minXindex) then swapPoints(i,minXindex);
+  if(i<>maxXindex) then swapPoints(i, maxXindex);
+  // остальная часть массива упорядочена, работа по сортировке выполнена
+  if sortedFlag then exit;
   end;
 
 end;
@@ -345,26 +364,79 @@ begin
 end;
 
 function TFndimFunctionByPoints1d.CmpWithFunction(Func2: TFndimFunctionByPoints1d): Double;
-// сравнить два массива типа Double и длиной ALength элементов.
 // возвращает сумму модулей разности элементов
 var
   i: NativeInt;
   ASumm,v1,v2: Double;
-  X1ptr,X2ptr: PDouble;
+  F1ptr,F2ptr: PDouble;
 begin
   ASumm := 0;
-  X1ptr := msFvalues.Memory;
-  X2ptr := Func2.msFvalues.Memory;
+  F1ptr := msFvalues.Memory;
+  F2ptr := Func2.msFvalues.Memory;
 
   Assert(pointsCount=Func2.pointsCount,'пробуем сравнить две функции с разным числом точек');
 
-  for i:=0 to pointsCount-1 do begin
-    v1 := X1ptr[i];
-    v2 := X2ptr[i];
+  for i:=0 to Fdim*pointsCount-1 do begin
+    v1 := F1ptr[i];
+    v2 := F2ptr[i];
     ASumm := ASumm + abs(v1-v2);
-    end;
+  end;
 
   Result := ASumm;
+end;
+
+// найти индекс точки - начала интервала, внутри которого лежит аргумент x
+function TFndimFunctionByPoints1d.FindIntervalIndex_ofX(x: Double): NativeInt;
+var
+  i: NativeInt;
+  x0: Double;
+begin
+  Result := 0;
+  for i:=0 to pointsCount-1 do begin
+    if(x >= getPoint_Xi(i)) then begin
+      Result := i;
+      exit;
+    end;
+    end;
+end;
+
+// найти значение функции по кусочно-постоянной интерполяции
+function TFndimFunctionByPoints1d.IntervalInterpolation(x: Double): PDouble;
+var
+  i: NativeInt;
+begin
+  i := FindIntervalIndex_ofX(x);
+  Result:= getPoint_Fi(i);
+end;
+
+// найти значение функции по линейной интерполяции
+function TFndimFunctionByPoints1d.LinearInterpolation(x: Double): PDouble;
+var
+  i,k: NativeInt;
+  F2,F1: PDouble;
+  y,y1,y2,x1,x2,dy,dx,x0: Double;
+begin
+  i := FindIntervalIndex_ofX(x);
+
+  if i=pointsCount-1 then begin // последняя точка интервала значит экстраполяция - берем ее и предпоследнюю.
+    Dec(i);
+  end;
+
+  x1 := getPoint_Xi(i);
+  x2 := getPoint_Xi(i+1);
+
+  F1 := getPoint_Fi(i);
+  F2 := getPoint_Fi(i+1);
+
+  for k:=0 to Fdim-1 do begin
+    y1 := F1[k];
+    y2 := F2[k];
+    y := y1+(x-x1)*(y2-y1)/(x2-x1);
+    Fval1[k] :=y;
+  end;
+
+  // TODO проверить, чтобы данные не перезатирались
+  Result:= @Fval1[0];
 end;
 
 //===========================================================================
@@ -394,7 +466,7 @@ function test_1():Boolean;
   begin
   Result := True;
   Ylength := 1; // пока одномерная функция
-  funcA.ClearFunction;
+  funcA.ClearPoints;
   funcA.setFdim(Ylength);
   SetLength(Yarray,Ylength);
 
@@ -434,7 +506,7 @@ function test_2():Boolean;
   begin
   Result := True;
   Ylength := 3; // векторная функция, размерность 3
-  funcA.ClearFunction;
+  funcA.ClearPoints;
   funcA.setFdim(Ylength);
   SetLength(Yarray,Ylength);
 
@@ -480,11 +552,11 @@ function test_3(): Boolean;
     x,y: Double;
     Yarray: DoubleArray;
     Y2ptr: PDouble;
-    cond1: Boolean;
+    a_true: Boolean;
   begin
   Result := True;
   Ylength := 3; // векторная функция, размерность 3
-  funcA.ClearFunction;
+  funcA.ClearPoints;
   funcA.setFdim(Ylength);
   SetLength(Yarray,Ylength);
 
@@ -505,23 +577,23 @@ function test_3(): Boolean;
   // на месте точки 5 должны быть значения точки 10
   x := funcA.getPoint_Xi(5);
   Y2ptr := funcA.getPoint_Fi(5);
-  cond1 := (x=10)and(Y2ptr[0]=10)and(Y2ptr[1]=100)and(Y2ptr[2]=105);
-  Assert(cond1);
-  if not(cond1) then Result:=False;
+  a_true := (x=10)and(Y2ptr[0]=10)and(Y2ptr[1]=100)and(Y2ptr[2]=105);
+  Assert(a_true);
+  if not(a_true) then Result:=False;
 
   // на месте точки 10 должны быть значения точки 5
   x := funcA.getPoint_Xi(10);
   Y2ptr := funcA.getPoint_Fi(10);
-  cond1 := (x=5)and(Y2ptr[0]=5)and(Y2ptr[1]=25)and(Y2ptr[2]=30);
-  Assert(cond1);
-  if not(cond1) then Result:=False;
+  a_true := (x=5)and(Y2ptr[0]=5)and(Y2ptr[1]=25)and(Y2ptr[2]=30);
+  Assert(a_true);
+  if not(a_true) then Result:=False;
 
   // проверяем, что не затерли значения точки 6
   x := funcA.getPoint_Xi(6);
   Y2ptr := funcA.getPoint_Fi(6);
-  cond1 := (x=6)and(Y2ptr[0]=6)and(Y2ptr[1]=36)and(Y2ptr[2]=41);
-  Assert(cond1);
-  if not(cond1) then Result:=False;
+  a_true := (x=6)and(Y2ptr[0]=6)and(Y2ptr[1]=36)and(Y2ptr[2]=41);
+  Assert(a_true);
+  if not(a_true) then Result:=False;
 
   SetLength(Yarray, 0 );
   end;
@@ -624,11 +696,134 @@ function test_4(): Boolean;
   end;
 
 function test_5(): Boolean;
+  // тестирование вспомогательных функции сортировки и прочего - векторный выход размерность 3
+  var
+    Func_zero,Func_ones,Func_i,Func_downcount: TFndimFunctionByPoints1d;
+    i: Integer;
+    x: Double;
+    F: DoubleArray;
+  const
+    REALZERO = 1e-8;
+    VSIZE = 3;
+  begin
+    Result := True;
+
+    SetLength(F, VSIZE);
+    Func_zero := TFndimFunctionByPoints1d.Create;
+    Func_zero.setFdim(3);
+
+    Func_ones := TFndimFunctionByPoints1d.Create;
+    Func_ones.setFdim(3);
+
+    Func_i := TFndimFunctionByPoints1d.Create;
+    Func_i.setFdim(3);
+
+    Func_downcount := TFndimFunctionByPoints1d.Create;
+    Func_downcount.setFdim(3);
+
+    Func_zero.beginPoints();
+    Func_ones.beginPoints();
+    Func_i.beginPoints();
+    Func_downcount.beginPoints();
+
+    for i:=0 to 9 do begin
+      x := i;
+      F[0] := 0;
+      F[1] := 0;
+      F[2] := 0;
+      Func_zero.addPoint(x,F);
+
+      F[0] := 1;
+      F[1] := 1;
+      F[2] := 1;
+      Func_ones.addPoint(x,F);
+
+      F[0] := i;
+      F[1] := i;
+      F[2] := i;
+      Func_i.addPoint(x,F);
+
+      F[0] := 9-i;
+      F[1] := 9-i;
+      F[2] := 9-i;
+      Func_downcount.addPoint(x,F);
+
+    end;
+
+    Func_zero.endPoints();
+    Func_ones.endPoints();
+    Func_i.endPoints();
+    Func_downcount.endPoints();
+
+  // тесты проверки упорядочения
+   a_true := Func_zero.IsXsorted();
+   b_true := Func_i.IsXsorted();
+   c_true := Func_downcount.IsXsorted();
+
+   Func_i.swapPoints(3,7);  // переставляем точки местами, теперь они неупорядочены
+   a_false := Func_i.IsXsorted();
+   Func_downcount.swapPoints(0,1);  // переставляем точки местами, теперь они неупорядочены
+   b_false := Func_downcount.IsXsorted();
+
+   Assert(a_true and b_true);
+   Assert((not a_false)and(not b_false));
+   if not (a_true and b_true and c_true) then Result:=False;
+   if not ((not a_false)and(not b_false)) then Result:=False;
+
+   // тесты проверки сортировки
+   Func_i.swapPoints(7,0);
+   Func_i.sortPoints();
+   a_true := Func_i.IsXsorted();
+   Func_downcount.sortPoints();
+   b_true := Func_downcount.IsXsorted();
+   Assert(a_true and b_true);
+   if not (a_true and b_true and c_true) then Result:=False;
+
+   // тесты сравнения функций
+   a_real := Func_zero.CmpWithFunction(Func_zero); //
+   b_real := Func_zero.CmpWithFunction(Func_ones);
+   a_true := abs(a_real) < REALZERO;
+   b_true := abs(b_real-30) < REALZERO;
+
+   Assert(a_true and b_true);
+   if not (a_true and b_true) then Result:=False;
+
+   // тесты поиска дубликатов в координатах
+   a_false := Func_i.IsXduplicated();
+   b_false := Func_ones.IsXduplicated();
+   Func_i.beginPoints();
+   Func_ones.beginPoints();
+   F[0]:=1;
+   x:=9;
+   Func_i.addPoint(x, F);
+   Func_ones.addPoint(x, F);
+   Func_i.endPoints();
+   Func_ones.endPoints();
+   a_true := Func_i.IsXduplicated();
+   b_true := Func_ones.IsXduplicated();
+
+   Assert(a_true and b_true and(not a_false)and(not b_false));
+   if not(a_true and b_true and(not a_false)and(not b_false)) then Result:=False;
+
+   SetLength(F, 0);
+   FreeAndNil(Func_zero);
+   FreeAndNil(Func_ones);
+   FreeAndNil(Func_i);
+   FreeAndNil(Func_downcount);
+  end;
+//----------------------------------------------------------------------------
+function test_6(): Boolean;
+  // тестирование тестирование функции интерполяции, кусочно-постоянной и линейной
   begin
   Result := False;
-  funcA.ClearFunction;
-  funcA.addUserFunction(0,10,1000,'sine',1,0,0);
   end;
+
+//---------------------------------------------------------------------------
+function test_7(): Boolean;
+  begin
+  Result := False;
+  end;
+//----------------------------------------------------------------------------
 
 begin
   //Assert(False, 'если вы видите это сообщение, Asserts подключены и работают' );
@@ -649,6 +844,8 @@ begin
     if test_3() then writeln(testLog,'test3     Ok') else writeln(testLog,'!! test3  FAILED!!');
     if test_4() then writeln(testLog,'test4     Ok') else writeln(testLog,'!! test4  FAILED!!');
     if test_5() then writeln(testLog,'test5     Ok') else writeln(testLog,'!! test5  FAILED!!');
+    if test_6() then writeln(testLog,'test6     Ok') else writeln(testLog,'!! test6  FAILED!!');
+    if test_7() then writeln(testLog,'test7     Ok') else writeln(testLog,'!! test7  FAILED!!');
 
   finally
     write(testLog, 'END of autotest routine log file');

@@ -1,8 +1,11 @@
 autotest report by InterpolationBlocks_unit.pas
-08.02.25 12:52:56
+10.02.25 15:55:37
 BEGIN
 test1     Ok
 test2     Ok
 test3     Ok
 test4     Ok
+test5     Ok
+!! test6  FAILED!!
+!! test7  FAILED!!
 END of autotest routine log file
