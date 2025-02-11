@@ -62,9 +62,6 @@ type
     // запись в файл
     function SaveToCsv(fileName: string):Boolean;
 
-    procedure addUserFunction(Xbegin,Xend: Double; NPoints:NativeInt; kind: string;
-      noise,param1,param2: Double);
-
     // конструирование функции добавлением точек врукопашную
     procedure beginPoints(); // вызвать перед началом работы
     procedure endPoints();
@@ -173,38 +170,6 @@ end;
 function TFndimFunctionByPoints1d.SaveToCsv(fileName: string):Boolean;
 begin
   Result := False;
-end;
-
-// создать функцию - наборы точек и прочее пользовательской процедурой -
-// дл€ отладки и тестировани€.
-procedure TFndimFunctionByPoints1d.addUserFunction(Xbegin,Xend: Double; NPoints:NativeInt;
-  kind: string; noise,param1,param2: Double );
-var
-  i: NativeInt;
-  x,dx: Double;
-begin
-  if StrEqu(kind,'sine') then begin
-    dx := (Xend-Xbegin)/NPoints;
-    beginPoints();
-    for i:=0 to NPoints-1 do begin
-      x := Xbegin+i*dx;
-      Fval1[0] := sin(x)+(noise-0.5)*random();
-      addPoint(x, Fval1);
-      end;
-    endPoints();
-  end;
-
-  if StrEqu(kind,'line') then begin
-    dx := (Xend-Xbegin)/NPoints;
-    beginPoints();
-    for i:=0 to NPoints-1 do begin
-      x := Xbegin+i*dx;
-      Fval1[0] := param1*x+param2+(noise-0.5)*random();
-      addPoint(x, Fval1);
-      end;
-    endPoints();
-  end;
-
 end;
 
 // конструирование функции добавлением точек врукопашную
@@ -392,12 +357,25 @@ var
   x0: Double;
 begin
   Result := 0;
-  for i:=0 to pointsCount-1 do begin
-    if(x >= getPoint_Xi(i)) then begin
+
+  // сперва ищем внутри интервала аргументов
+  for i:=0 to pointsCount-2 do begin
+    if((x>=getPoint_Xi(i))and(x<getPoint_Xi(i+1))) then begin
       Result := i;
       exit;
     end;
     end;
+
+  // случай аргумент за пределами
+  if x< getPoint_Xi(0) then begin
+    Result := 0;
+    exit;
+  end
+  else if x>=getPoint_Xi(pointsCount-1) then begin
+    Result := pointsCount-1;
+    exit;
+  end;
+
 end;
 
 // найти значение функции по кусочно-посто€нной интерпол€ции
@@ -814,15 +792,282 @@ function test_5(): Boolean;
 //----------------------------------------------------------------------------
 function test_6(): Boolean;
   // тестирование тестирование функции интерпол€ции, кусочно-посто€нной и линейной
+  var
+    i: NativeInt;
+    x: Double;
+    F:DoubleArray;
+  const
+    REALZERO = 1e-8;
   begin
-  Result := False;
+  Result := True;
+  funcA.ClearPoints;
+  funcA.setFdim(1);
+
+  funcB.ClearPoints;
+  funcB.setFdim(1);
+
+  funcC.ClearPoints;
+  funcC.setFdim(1);
+  SetLength(F, 1);
+
+  funcA.beginPoints;
+  funcB.beginPoints;
+  funcC.beginPoints;
+
+  for i:=-100 to 100 do begin
+    x := i;
+    F[0] := x;            // линейна€
+    funcA.addPoint(x, F);
+
+    F[0] := x*x+x;
+    funcB.addPoint(x, F);
+
+    F[0] := sin(PI*x/20); // синус
+    funcC.addPoint(x, F);
+    end;
+
+  funcA.endPoints;
+  funcB.endPoints;
+  funcC.endPoints;
+
+  // кусочно-посто€нна€
+  x := 0.1;
+  a_real := funcA.IntervalInterpolation(x)[0];
+  b_real := funcB.IntervalInterpolation(x)[0];
+  c_real := funcC.IntervalInterpolation(x)[0];
+
+  a_true := abs(a_real-0)<REALZERO;
+  b_true := abs(b_real-0)<REALZERO;
+  c_true := abs(c_real-0)<REALZERO;
+
+  Assert(a_true and b_true and c_true);
+  if not (a_true and b_true and c_true) then Result:=False;
+
+  x := 10;
+  a_real := funcA.IntervalInterpolation(x)[0];
+  b_real := funcB.IntervalInterpolation(x)[0];
+  c_real := funcC.IntervalInterpolation(x)[0];
+
+  a_true := abs(a_real-10)<REALZERO;
+  b_true := abs(b_real-110)<REALZERO;
+  c_true := abs(c_real-sin(PI*10/20))<REALZERO;
+
+  Assert(a_true and b_true and c_true);
+  if not (a_true and b_true and c_true) then Result:=False;
+
+  // кусочно-посто€нна€ за пределами интервала аргументов - экстрапол€ци€
+  x := 110;
+  a_real := funcA.IntervalInterpolation(x)[0];
+  b_real := funcB.IntervalInterpolation(x)[0];
+  c_real := funcC.IntervalInterpolation(x)[0];
+
+  a_true := abs(a_real-100)<REALZERO;
+  b_true := abs(100*100+100-b_real)<REALZERO;
+  c_true := abs(c_real-sin(PI*100/20))<REALZERO;
+
+  Assert(a_true and b_true and c_true);
+  if not (a_true and b_true and c_true) then Result:=False;
+
+  // кусочно-посто€нна€ за пределами интервала аргументов - экстрапол€ци€
+  x := -110;
+  a_real := funcA.IntervalInterpolation(x)[0];
+  b_real := funcB.IntervalInterpolation(x)[0];
+  c_real := funcC.IntervalInterpolation(x)[0];
+
+  a_true := abs(a_real+100)<REALZERO;
+  b_true := abs(100*100-100-b_real)<REALZERO;
+  c_true := abs(c_real-sin(PI*-100/20))<REALZERO;
+
+  Assert(a_true and b_true and c_true);
+  if not (a_true and b_true and c_true) then Result:=False;
+
+  // линейна€
+  x := 0.1;
+  a_real := funcA.LinearInterpolation(x)[0];
+  b_real := funcB.LinearInterpolation(x)[0];
+  c_real := funcC.LinearInterpolation(x)[0];
+
+  a_true := abs(a_real-0.1)<REALZERO;
+  b_true := abs(b_real-0.2)<REALZERO;
+  c_true := abs(c_real-0.0156434465)<1e-6;
+
+  Assert(a_true and b_true and c_true);
+  if not (a_true and b_true and c_true) then Result:=False;
+
+  x := 10;
+  a_real := funcA.LinearInterpolation(x)[0];
+  b_real := funcB.LinearInterpolation(x)[0];
+  c_real := funcC.LinearInterpolation(x)[0];
+
+  a_true := abs(a_real-10)<REALZERO;
+  b_true := abs(b_real-110)<REALZERO;
+  c_true := abs(c_real-1)<1e-4;
+
+  Assert(a_true and b_true and c_true);
+  if not (a_true and b_true and c_true) then Result:=False;
+
+  // линейна€ за пределами интервала аргументов - экстрапол€ци€
+  x := 110;
+  a_real := funcA.LinearInterpolation(x)[0];
+  b_real := funcB.LinearInterpolation(x)[0];
+  c_real := funcC.LinearInterpolation(x)[0];
+
+  a_true := abs(a_real-110)<REALZERO;
+  b_true := abs(12100-b_real)<REALZERO;
+  c_true := abs(c_real+1.56434465)<1e-6;
+
+  Assert(a_true and b_true and c_true);
+  if not (a_true and b_true and c_true) then Result:=False;
+
+  // линейна€ за пределами интервала аргументов - экстрапол€ци€
+  x := -110;
+  a_real := funcA.LinearInterpolation(x)[0];
+  b_real := funcB.LinearInterpolation(x)[0];
+  c_real := funcC.LinearInterpolation(x)[0];
+
+  a_true := abs(a_real+110)<REALZERO;
+  b_true := abs(11880-b_real)<REALZERO;
+  c_true := abs(c_real-1.56434465)<1e-6;
+
+  Assert(a_true and b_true and c_true);
+  if not (a_true and b_true and c_true) then Result:=False;
+
+
+  SetLength(F, 0);
   end;
 
 //---------------------------------------------------------------------------
 function test_7(): Boolean;
+  // тестирование тестирование функции интерпол€ции, кусочно-посто€нной и линейной
+  var
+    i: NativeInt;
+    x: Double;
+    F:DoubleArray;
+  const
+    REALZERO = 1e-8;
   begin
-  Result := False;
+  Result := True;
+  funcA.ClearPoints;
+  funcA.setFdim(3);
+
+  SetLength(F, 3);
+
+  funcA.beginPoints;
+  for i:=-100 to 100 do begin
+    x := i;
+    F[0] := x;            // линейна€
+    F[1] := x*x+x;
+    F[2] := sin(PI*x/20); // синус
+    funcA.addPoint(x, F);
+    end;
+  funcA.endPoints;
+
+  // кусочно-посто€нна€
+  x := 0.1;
+  a_real := funcA.IntervalInterpolation(x)[0];
+  b_real := funcA.IntervalInterpolation(x)[1];
+  c_real := funcA.IntervalInterpolation(x)[2];
+
+  a_true := abs(a_real-0)<REALZERO;
+  b_true := abs(b_real-0)<REALZERO;
+  c_true := abs(c_real-0)<REALZERO;
+
+  Assert(a_true and b_true and c_true);
+  if not (a_true and b_true and c_true) then Result:=False;
+
+  x := 10;
+  a_real := funcA.IntervalInterpolation(x)[0];
+  b_real := funcA.IntervalInterpolation(x)[1];
+  c_real := funcA.IntervalInterpolation(x)[2];
+
+  a_true := abs(a_real-10)<REALZERO;
+  b_true := abs(b_real-110)<REALZERO;
+  c_true := abs(c_real-sin(PI*10/20))<REALZERO;
+
+  Assert(a_true and b_true and c_true);
+  if not (a_true and b_true and c_true) then Result:=False;
+
+  // кусочно-посто€нна€ за пределами интервала аргументов - экстрапол€ци€
+  x := 110;
+  a_real := funcA.IntervalInterpolation(x)[0];
+  b_real := funcA.IntervalInterpolation(x)[1];
+  c_real := funcA.IntervalInterpolation(x)[2];
+
+  a_true := abs(a_real-100)<REALZERO;
+  b_true := abs(100*100+100-b_real)<REALZERO;
+  c_true := abs(c_real-sin(PI*100/20))<REALZERO;
+
+  Assert(a_true and b_true and c_true);
+  if not (a_true and b_true and c_true) then Result:=False;
+
+  // кусочно-посто€нна€ за пределами интервала аргументов - экстрапол€ци€
+  x := -110;
+  a_real := funcA.IntervalInterpolation(x)[0];
+  b_real := funcA.IntervalInterpolation(x)[1];
+  c_real := funcA.IntervalInterpolation(x)[2];
+
+  a_true := abs(a_real+100)<REALZERO;
+  b_true := abs(100*100-100-b_real)<REALZERO;
+  c_true := abs(c_real-sin(PI*-100/20))<REALZERO;
+
+  Assert(a_true and b_true and c_true);
+  if not (a_true and b_true and c_true) then Result:=False;
+
+  // линейна€
+  x := 0.1;
+  a_real := funcA.LinearInterpolation(x)[0];
+  b_real := funcA.LinearInterpolation(x)[1];
+  c_real := funcA.LinearInterpolation(x)[2];
+
+  a_true := abs(a_real-0.1)<REALZERO;
+  b_true := abs(b_real-0.2)<REALZERO;
+  c_true := abs(c_real-0.0156434465)<1e-6;
+
+  Assert(a_true and b_true and c_true);
+  if not (a_true and b_true and c_true) then Result:=False;
+
+  x := 10;
+  a_real := funcA.LinearInterpolation(x)[0];
+  b_real := funcA.LinearInterpolation(x)[1];
+  c_real := funcA.LinearInterpolation(x)[2];
+
+  a_true := abs(a_real-10)<REALZERO;
+  b_true := abs(b_real-110)<REALZERO;
+  c_true := abs(c_real-1)<1e-4;
+
+  Assert(a_true and b_true and c_true);
+  if not (a_true and b_true and c_true) then Result:=False;
+
+  // линейна€ за пределами интервала аргументов - экстрапол€ци€
+  x := 110;
+  a_real := funcA.LinearInterpolation(x)[0];
+  b_real := funcA.LinearInterpolation(x)[1];
+  c_real := funcA.LinearInterpolation(x)[2];
+
+  a_true := abs(a_real-110)<REALZERO;
+  b_true := abs(12100-b_real)<REALZERO;
+  c_true := abs(c_real+1.56434465)<1e-6;
+
+  Assert(a_true and b_true and c_true);
+  if not (a_true and b_true and c_true) then Result:=False;
+
+  // линейна€ за пределами интервала аргументов - экстрапол€ци€
+  x := -110;
+  a_real := funcA.LinearInterpolation(x)[0];
+  b_real := funcA.LinearInterpolation(x)[1];
+  c_real := funcA.LinearInterpolation(x)[2];
+
+  a_true := abs(a_real+110)<REALZERO;
+  b_true := abs(11880-b_real)<REALZERO;
+  c_true := abs(c_real-1.56434465)<1e-6;
+
+  Assert(a_true and b_true and c_true);
+  if not (a_true and b_true and c_true) then Result:=False;
+
+
+  SetLength(F, 0);
   end;
+
 //----------------------------------------------------------------------------
 
 begin

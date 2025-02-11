@@ -26,338 +26,221 @@ uses {$IFNDEF FPC}Windows,{$ENDIF}
 
 
 type
-{
-Блок интерполяции, универсальный. Создан на основе блоков из mbtu_std
-}
 
-  TInterpolationBlock1 = class(TRunObject)
+  // отладочный блок-компонент для быстрой проверки размерностей. Математическая операция - взятие модуля
+  //Размерности входных векторов долны совпадать. Размерность выходного вектора равна размерности входных.
+  TMyAbs1 = class(TRunObject)
   protected
-    // эта часть от TFromTable2D
-    table:         TTable2;
-
-    // эта часть от TInterp
-    SplineArr:     TExtArray2;
-    Ind:           array of NativeInt;
-    x_tab:         TExtArray2;
-    y_tab:         TExtArray2;
+    a:             TExtArray;
   public
-    // эта часть от TFromTable2D
-    FileName:      string;
-    interp_method: NativeInt;
-
-    // эта часть от TInterp
-    Met,
-    Order,
-    N,
-    M,
-    Nfun:          NativeInt;
-    SplineIsNatural:Boolean;
-
     function       InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
-    function       InfoFunc_TFromTable2D(Action: integer;aParameter: NativeInt):NativeInt;
-    function       InfoFunc_TInterp(Action: integer;aParameter: NativeInt):NativeInt;
-
-
     function       RunFunc(var at,h : RealType;Action:Integer):NativeInt;override;
-    function       RunFunc_TFromTable2D(var at,h : RealType;Action:Integer):NativeInt;
-    function       RunFunc_TInterp(var at,h : RealType;Action:Integer):NativeInt;
-
     function       GetParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;override;
     constructor    Create(Owner: TObject);override;
     destructor     Destroy;override;
-    function       GetOutParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;override;
-    function       ReadParam(ID: NativeInt;ParamType:TDataType;DestData: Pointer;DestDataType: TDataType;MoveData:TMoveProc):boolean;override;
   end;
 
-const
-  interp_method_linear = 0;    // методы интерполяции
-  interp_method_linear_noextra = 1;
-  interp_piecewise_constant =2;
-
-  Met_polynom_Lagrange = 0;
-  Met_cube_spline = 1;
-  Met_linear = 2;
+  // блок интерполяции N-мерной функции одного аргумента
+  TMyInterpolationBlock1 = class(TRunObject)
+  protected
+    Func: TFndimFunctionByPoints1d;
+    Ndim: NativeInt;
+  public
+    function       InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
+    function       RunFunc(var at,h : RealType;Action:Integer):NativeInt;override;
+    function       GetParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;override;
+    constructor    Create(Owner: TObject);override;
+    destructor     Destroy;override;
+  end;
 
 implementation
-
-{*******************************************************************************
-            Двумерная интерполяция по таблице из файла
-*******************************************************************************}
-constructor  TInterpolationBlock1.Create;
+//===========================================================================
+constructor TMyInterpolationBlock1.Create;
 begin
   inherited;
-  // эта часть от TFromTable2D
-  table:=TTable2.Create('');
-  interp_method:=0;
-
-  // эта часть от TInterp
-  SplineArr:=TExtArray2.Create(1,1);
-  x_tab:=TExtArray2.Create(1,1);
-  y_tab:=TExtArray2.Create(1,1);
-  SplineIsNatural:=True;
-
-  // запуск автотеста
-  TFndimFunctionByPoints1d_testAll();
-
+  IsLinearBlock:=True;
 end;
 
-destructor   TInterpolationBlock1.Destroy;
+destructor  TMyInterpolationBlock1.Destroy;
 begin
   inherited;
-  // эта часть от TFromTable2D
-  table.Free;
-
-  // эта часть от TInterp
-  SplineArr.Free;
-  x_tab.Free;
-  y_tab.Free;
 end;
 
-//----------------------------------------------------------------------------
-function    TInterpolationBlock1.GetParamID;
+function    TMyInterpolationBlock1.GetParamID;
 begin
   Result:=inherited GetParamID(ParamName,DataType,IsConst);
-  if Result <> -1 then Exit;
+  if Result <> -1 then exit;
 
-  // параметры от TFromTable2D
-  if StrEqu(ParamName,'interp_method') then begin
-      Result:=NativeInt(@interp_method);
-      DataType:=dtInteger;
-    end
-  else
-    if StrEqu(ParamName,'filename') then begin
-      Result:=NativeInt(@FileName);
-      DataType:=dtString;
-    end
-
-  else // эта часть от TInterp
-  if StrEqu(ParamName,'met') then begin
-      Result:=NativeInt(@met);
-      DataType:=dtInteger;
-    end
-  else
-    if StrEqu(ParamName,'m') then begin
-      Result:=NativeInt(@m);
-      DataType:=dtInteger;
-    end
-  else
-    if StrEqu(ParamName,'n') then begin
-      Result:=NativeInt(@n);
-      DataType:=dtInteger;
-    end
-  else
-    if StrEqu(ParamName,'nfun') then begin
-      Result:=NativeInt(@nfun);
-      DataType:=dtInteger;
-    end
-  else
-    if StrEqu(ParamName,'order') then begin
-      Result:=NativeInt(@order);
-      DataType:=dtInteger;
-    end
-  else
-    if StrEqu(ParamName,'isnatural') then begin
-      Result:=NativeInt(@SplineIsNatural);
-      DataType:=dtBool;
-    end
+  if StrEqu(ParamName,'Ndim') then begin
+    Result:=NativeInt(@Ndim);
+    DataType:=dtInteger;
+    exit;
+  end;
 
 end;
-//---------------------------------------------------------------------------
 
-function TInterpolationBlock1.InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;
+function    TMyInterpolationBlock1.InfoFunc;
+  var i,maxn,maxd,dimi:  integer;
 begin
-  //Result := InfoFunc_TFromTable2D(Action,aParameter);
-  Result := InfoFunc_TInterp(Action,aParameter);
-end;
-//---------------------------------------------------------------------------
+  Result := r_Success;
 
-function TInterpolationBlock1.InfoFunc_TFromTable2D(Action: integer;aParameter: NativeInt):NativeInt;
-begin
-  Result:=0;
   case Action of
-    i_GetInit:   Result:=0;
+    i_GetInit:   Result := r_Success;
     i_GetCount:  begin
-                   cY[0]:=cU[0];
-                   cU[1]:=cU[0];
+                   if Length( cU ) = 0 then begin  // входной вектор нулевой длины - невозможная ситуация
+                     ErrorEvent(txtSumErr,msError,VisualObject);
+                     Result:=r_Fail;
+                     exit;
+                   end;
+
+                   CU[0].Dim:=SetDim([Ndim]);
+                   CU[1].Dim:=SetDim([Ndim*Ndim]);
+                   CY[0].Dim:=SetDim([GetFullDim(CU[2].Dim)*Ndim]);
                  end;
   else
     Result:=inherited InfoFunc(Action,aParameter);
   end;
 end;
-//---------------------------------------------------------------------------
 
-function TInterpolationBlock1.InfoFunc_TInterp(Action: integer;aParameter: NativeInt):NativeInt;
+function   TMyInterpolationBlock1.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
+var i,j : Integer;
+    s,v   : RealType;
+    k   : double;
+    i0,j0: Integer;
+
 begin
   Result:=0;
   case Action of
-    i_GetCount:  begin
-                   CU[0].Dim:=SetDim([N]);
-                   CU[1].Dim:=SetDim([N*Nfun]);
-                   CY[0].Dim:=SetDim([GetFullDim(CU[2].Dim)*Nfun]);
-                 end;
-  else
-    Result:=inherited InfoFunc(Action,aParameter);
+    f_InitState,
+    f_RestoreOuts,
+    f_UpdateJacoby,
+    f_UpdateOuts,
+    f_GoodStep:
+              begin
+                 {
+                  for i:=0 to Y[0].count - 1 do begin
+                   s:=0;
+                   k:=1;
+                   for j:=0 to Length( cU ) - 1 do begin
+                     if j < a.Count then k:=a.Arr^[j];
+                     //s:=s + U[j].Arr^[i]*k;
+                     s:=s + U[j].Arr^[i]*k;
+                   end;
+                   //Y[0].Arr^[i]:=s;
+                   Y[0].Arr^[i]:=abs(s);
+                 end
+                 }
+              end;
   end;
 end;
-//---------------------------------------------------------------------------
 
-function    TInterpolationBlock1.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
+//===========================================================================
+//===========================================================================
+constructor TMyAbs1.Create;
 begin
-  //Result := RunFunc_TFromTable2D(at,h,Action);
-  Result := RunFunc_TInterp(at,h,Action);
+  inherited;
+  a:=TExtArray.Create(0);
+  IsLinearBlock:=True;
 end;
-//---------------------------------------------------------------------------
 
-function    TInterpolationBlock1.RunFunc_TFromTable2D(var at,h : RealType;Action:Integer):NativeInt;
- var i: integer;
+destructor  TMyAbs1.Destroy;
 begin
-  Result:=0;
+  inherited;
+  FreeAndNil(a);
+end;
+
+function    TMyAbs1.GetParamID;
+begin
+  Result:=inherited GetParamID(ParamName,DataType,IsConst);
+  if Result = -1 then begin
+    if StrEqu(ParamName,'a') then begin
+      Result:=NativeInt(a);
+      DataType:=dtDoubleArray;
+    end;
+  end
+end;
+
+function    TMyAbs1.InfoFunc;
+  var i,maxn,maxd,dimi:  integer;
+begin
+  Result := r_Success;
 
   case Action of
-    f_InitObjects: begin
-                     //Загрузка данных из файла с таблицей
-                     table.OpenFromFile(FileName);
-                     if (table.px1.Count = 0) or (table.px2.Count = 0) then begin
-                       ErrorEvent(txtErrorReadTable,msError,VisualObject);
-                       Result:=r_Fail;
+    i_GetCount:  begin
+                   if Length( cU ) = 0 then begin  // входной вектор нулевой длины - невозможная ситуация
+                     ErrorEvent(txtSumErr,msError,VisualObject);
+                     Result:=r_Fail;
+                     exit;
+                   end;
+
+                   //Для определениы выходной размерности используем
+                   //максимальную вычисленную размерность
+                   maxn:=0;
+                   maxd:=GetFullDim(CU[maxn].Dim);
+                   for i:=1 to Length(cU) - 1 do begin
+                     dimi:=GetFullDim(CU[i].Dim);
+                     if dimi > maxd then begin
+                       maxd:=dimi;
+                       maxn:=i;
                      end;
                    end;
 
-    f_UpdateJacoby,
-    f_InitState,
-    f_UpdateOuts,
-    f_RestoreOuts,
-    f_GoodStep:   case interp_method of
-                    1: begin
-                         for i:=0 to U[0].Count - 1 do
-                           Y[0].Arr^[i]:=table.GetFunValueWithoutExtrapolation(U[0].Arr^[i],U[1].Arr^[i]);
-                       end;
-                    2: begin
-                         for i:=0 to U[0].Count - 1 do
-                           Y[0].Arr^[i]:=table.GetFunValueWithoutInterpolation(U[0].Arr^[i],U[1].Arr^[i]);
-                       end;
-                  else
-                    for i:=0 to U[0].Count - 1 do
-                      Y[0].Arr^[i]:=table.GetFunValue(U[0].Arr^[i],U[1].Arr^[i]);
-                  end;
-
-  end
+                   CY[0].Dim:=CU[maxn].Dim;
+                   for i:=1 to Length(cU) - 1 do cU[i].Dim:=cU[maxn].Dim;
+                 end;
+  else
+    Result:=inherited InfoFunc(Action,aParameter);
+  end;
 end;
-//----------------------------------------------------------------------------
 
-function    TInterpolationBlock1.RunFunc_TInterp(var at,h : RealType;Action:Integer):NativeInt;
-var i,j,c   : Integer;
-    py      : PExtArr;
-    px      : PExtArr;
-
- function  CheckChanges:boolean;
-  var j: integer;
- begin
-   Result:=False;
-   for j:=0 to N - 1 do
-     if (x_tab[i].Arr^[j] <> px[j]) or (y_tab[i].Arr^[j] <> py[j]) then begin
-       x_tab[i].Arr^[j]:=px[j];
-       y_tab[i].Arr^[j]:=py[j];
-       Result:=True;
-     end;
- end;
+function   TMyAbs1.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
+var i,j : Integer;
+    s,v   : RealType;
+    k   : double;
+    i0,j0: Integer;
 
 begin
   Result:=0;
-
   case Action of
-    f_InitObjects: begin
-                     //Здесь устанавливаем нужные размерности вспомогательных
-                     SetLength(Ind,GetFullDim(cU[2].Dim));
-                     ZeroMemory(Pointer(Ind), GetFullDim(cU[2].Dim)*SizeOf(NativeInt));
-                     SplineArr.ChangeCount(5,N);
-                     x_tab.ChangeCount(Nfun,N);
-                     y_tab.ChangeCount(Nfun,N);
-                   end;
-
     f_InitState,
     f_RestoreOuts,
     f_UpdateJacoby,
     f_UpdateOuts,
-    f_GoodStep: begin
-                  px:=U[0].Arr;
-                  py:=U[1].arr;
-                  c:=0;
+    f_GoodStep:
+              begin
+                for i:=0 to Y[0].count - 1 do begin
+                   s:=0;
+                   k:=1;
+                   if i < a.Count then begin
+                       k:=a.Arr^[i];
+                     end  else begin
+                       ErrorEvent('входная размерность больше ветора а',msError,VisualObject);
+                     end;
 
-                  for i:=0 to Nfun - 1 do begin
-                   case Met of
-                   0: for j:=0 to U[2].Count - 1 do begin
-                         Y[0].arr^[i*U[2].Count+j]:=Lagrange(px^,py^,U[2].arr^[j],Order,M);
-                         inc(c);
-                      end;
-
-                   1: begin
-                       //Вычисление натурального кубического сплайна
-                       if CheckChanges or (Action = f_InitState) then NaturalSplineCalc(px,py,SplineArr.Arr,N,SplineIsNatural);
-                       for j:=0 to U[2].Count - 1 do begin
-                         Y[0].arr^[c] :=Interpol(U[2].Arr^[j],SplineArr.Arr,5,Ind[j]);
-                         inc(c);
-                       end
-                      end;
-
-                   2: begin
-                       if CheckChanges or (Action = f_InitState) then LInterpCalc(px,py,SplineArr.Arr,N);
-                       for j:=0 to U[2].Count - 1 do begin
-                         Y[0].arr^[c] :=Interpol(U[2].Arr^[j],SplineArr.Arr,3,Ind[j]);
-                         inc(c);
-                       end
-                      end;
+                   for j:=0 to Length( cU ) - 1 do begin
+                     s:=s + U[j].Arr^[i]*k;
                    end;
-                   py:=@py^[N];
+                   //Y[0].Arr^[i]:=s;
+                   Y[0].Arr^[i]:=abs(s);
+                  end
 
-		              end
-                 end;
-  end
-end;
-
-//---------------------------------------------------------------------------
-function TInterpolationBlock1.GetOutParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;
-begin
-  Result:=inherited GetOutParamID(ParamName, DataType, IsConst);
-  if Result = -1 then begin
-    if StrEqu(ParamName,'py_') then begin
-      Result:=11;
-      DataType:=dtMatrix;
-    end
-    else
-    if StrEqu(ParamName,'px1_') then begin
-      Result:=12;
-      DataType:=dtDoubleArray;
-    end
-    else
-    if StrEqu(ParamName,'px2_') then begin
-      Result:=13;
-      DataType:=dtDoubleArray;
-    end
+                 {
+                  for i:=0 to Y[0].count - 1 do begin
+                   s:=0;
+                   k:=1;
+                   for j:=0 to Length( cU ) - 1 do begin
+                     if j < a.Count then k:=a.Arr^[j];
+                     //s:=s + U[j].Arr^[i]*k;
+                     s:=s + U[j].Arr^[i]*k;
+                   end;
+                   //Y[0].Arr^[i]:=s;
+                   Y[0].Arr^[i]:=abs(s);
+                 end
+                 }
+              end;
   end;
 end;
-//---------------------------------------------------------------------------
-
-function TInterpolationBlock1.ReadParam(ID: NativeInt;ParamType:TDataType;DestData: Pointer;DestDataType: TDataType;MoveData:TMoveProc):boolean;
- var i: integer;
-begin
-  Result:=inherited ReadParam(ID,ParamType,DestData,DestDataType,MoveData);
-  if not Result then
-  case ID of
-    11: if table <> nil then begin
-          MoveData(table.py,dtMatrix,DestData,DestDataType);
-          Result:=True;
-        end;
-    12: if table <> nil then begin
-          MoveData(table.px1,dtDoubleArray,DestData,DestDataType);
-          Result:=True;
-        end;
-    13: if table <> nil then begin
-          MoveData(table.px2,dtDoubleArray,DestData,DestDataType);
-          Result:=True;
-        end;
-  end;
-end;
+//===========================================================================
 
 //---------------------------------------------------------------------------
 end.
