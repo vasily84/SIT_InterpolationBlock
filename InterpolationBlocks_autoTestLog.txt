@@ -1,5 +1,5 @@
 autotest report by InterpolationBlocks_unit.pas
-11.02.25 15:34:58
+12.02.25 19:13:56
 BEGIN
 test1     Ok
 test2     Ok

@@ -24,10 +24,6 @@ uses {$IFNDEF FPC}Windows,{$ENDIF}
 // путь к отчету по автотесту. Папки должны существовать
 const autoTest_FileName = 'e:\USERDISK\SIM_WORK\БЛОКИ_ИНТЕРПОЛЯЦИИ\InterpolationBlocks_autoTestLog.txt';
 
-
-type
- DoubleArray = Array of Double;
-
 type
   TFndimFunctionByPoints1d = class(TObject)
   // N-мерная функция от 1 аргумента, заданная точками
@@ -36,12 +32,13 @@ type
     AFdim: NativeInt; // размер выходного вектора функции
     isBeginPointsEnter: Boolean; // состояние внутри вызовов beginPoints() и endPoints();
     msFvalues, msXvalues: TMemoryStream;
-    // переменные размерности выходного вектора для локального использования
-    Fval1,Fval2,Fval3,Fval4: DoubleArray;
     // последний индекс, найденный при вызове функции поиска индекса интервала
     // - скорее всего он корректен для следующего вызова
     LastIntervalIndex: NativeInt;
+    Fval3,Fval4: array of double;
   public
+    // переменные размерности выходного вектора для локального использования
+    Fval1,Fval2: array of double;
 
     constructor Create();
     destructor Destroy;override;
@@ -68,9 +65,10 @@ type
     // удалить все старые точки точки
     procedure ClearPoints;
     // добавить точку в набор точек функции
-    function addPoint(x: Double; F: DoubleArray):Boolean;
+    function addPoint(x: Double; F: PDouble):Boolean;
     function getPoint_Xi(Pindex: NativeInt): Double;inline;
-    function getPoint_Fi(Pindex: NativeInt): PDouble;inline;
+    //function getPoint_Fi(Pindex: NativeInt): PDouble;inline;
+    procedure getPoint_Fi(Pindex: NativeInt; Fresult: PDouble);
 
     // поменять точки местами
     procedure swapPoints(i,j :NativeInt);
@@ -86,9 +84,9 @@ type
     // найти индекс точки - начала интервала, внутри которого лежит аргумент x
     function FindIntervalIndex_ofX(x: Double): NativeInt;
     // найти значение функции по кусочно-постоянной интерполяции
-    function IntervalInterpolation(x: Double): PDouble;
+    procedure IntervalInterpolation(x: Double; Fresult: PDouble);
     // найти значение функции по линейной интерполяции
-    function LinearInterpolation(x: Double): PDouble;
+    procedure LinearInterpolation(x: Double; Fresult: PDouble);
   end;
 
 procedure TFndimFunctionByPoints1d_testAll();
@@ -185,12 +183,19 @@ begin
 end;
 
 // добавить точку в набор точек функции
-function TFndimFunctionByPoints1d.addPoint(x: Double; F: DoubleArray):Boolean;
+function TFndimFunctionByPoints1d.addPoint(x: Double; F: PDouble):Boolean;
+var
+  i: Integer;
+  v: Double;
 begin
   Assert(isBeginPointsEnter, 'добавление точек в функцию за пределами beginPoints() endPoints()');
 
   msXvalues.Write(x,sizeof(Double)); // добавляем аргумент
-  msFvalues.Write(F[0],sizeof(Double)*Fdim); // добавляем вектор-значение
+  //msFvalues.Write(F^,sizeof(Double)*Fdim); // добавляем вектор-значение
+  for i:=0 to Fdim-1 do begin
+    v:= F[i];
+    msFvalues.Write(F[i],sizeof(Double));
+    end;
   Inc(ApointsCount);
   Result := True;
 end;
@@ -204,13 +209,26 @@ begin
   Result := Xptr[Pindex];
 end;
 
-function TFndimFunctionByPoints1d.getPoint_Fi(Pindex: NativeInt): PDouble;
+//function TFndimFunctionByPoints1d.getPoint_Fi(Pindex: NativeInt): PDouble;
+procedure TFndimFunctionByPoints1d.getPoint_Fi(Pindex: NativeInt; Fresult: PDouble);
 // вернуть указатель на массив значений Y по индексу Pindex, т.е. векторное значение функции в точке
 var
   Fptr: PDouble;
+  i,j,count: Integer;
+  v: Double;
 begin
+  count := msFvalues.Size div sizeof(Double);
   Fptr := msFvalues.Memory;
-  Result := @Fptr[Pindex*Fdim];
+
+  //for i:=0 to count-1 do begin
+  //  v := Fptr[i];
+  //  end;
+
+  for i:=0 to Fdim-1 do begin
+    v := Fptr[Pindex*Fdim+i];
+    Fresult[i] := Fptr[Pindex*Fdim+i];
+    end;
+
 end;
 
 // поменять i,j точки функции местами
@@ -379,19 +397,18 @@ begin
 end;
 
 // найти значение функции по кусочно-постоянной интерполяции
-function TFndimFunctionByPoints1d.IntervalInterpolation(x: Double): PDouble;
+procedure TFndimFunctionByPoints1d.IntervalInterpolation(x: Double; Fresult: PDouble);
 var
   i: NativeInt;
 begin
   i := FindIntervalIndex_ofX(x);
-  Result:= getPoint_Fi(i);
+  getPoint_Fi(i, Fresult);
 end;
 
 // найти значение функции по линейной интерполяции
-function TFndimFunctionByPoints1d.LinearInterpolation(x: Double): PDouble;
+procedure TFndimFunctionByPoints1d.LinearInterpolation(x: Double;Fresult: PDouble);
 var
   i,k: NativeInt;
-  F2,F1: PDouble;
   y,y1,y2,x1,x2,dy,dx,x0: Double;
 begin
   i := FindIntervalIndex_ofX(x);
@@ -403,18 +420,17 @@ begin
   x1 := getPoint_Xi(i);
   x2 := getPoint_Xi(i+1);
 
-  F1 := getPoint_Fi(i);
-  F2 := getPoint_Fi(i+1);
+  getPoint_Fi(i, PDouble(Fval3));
+  getPoint_Fi(i+1, PDouble(Fval4));
+
 
   for k:=0 to Fdim-1 do begin
-    y1 := F1[k];
-    y2 := F2[k];
+    y1 := Fval3[k];
+    y2 := Fval4[k];
     y := y1+(x-x1)*(y2-y1)/(x2-x1);
-    Fval1[k] :=y;
+    Fresult[k] :=y;
   end;
 
-  // TODO проверить, чтобы данные не перезатирались
-  Result:= @Fval1[0];
 end;
 
 //===========================================================================
@@ -440,20 +456,22 @@ function test_1():Boolean;
   var
     i,Ylength: Integer;
     x,y: Double;
-    Yarray: DoubleArray;
+    Yarray,Farray: array of Double;
+    Yptr,Fptr: PDouble;
   begin
   Result := True;
   Ylength := 1; // пока одномерная функция
   funcA.ClearPoints;
   funcA.setFdim(Ylength);
-  SetLength(Yarray,Ylength);
+  SetLength(Yarray, Ylength);
+  SetLength(Farray, Ylength);
 
   funcA.beginPoints();
   for i:=0 to 9 do begin // добавляем врукопашную 10 точек
     x := i;
     y := i;
     Yarray[0]:=y;
-    funcA.addPoint(x,Yarray);
+    funcA.addPoint(x,PDouble(@Yarray[0]));
     end;
   funcA.endPoints();
 
@@ -461,12 +479,14 @@ function test_1():Boolean;
   if not (funcA.pointsCount = 10) then Result:=False;
 
   x := funcA.getPoint_Xi(3); // контроль корректности записи-чтения
-  y := funcA.getPoint_Fi(3)[0];
 
-  Assert((x=3)and(y=3));
-  if not((x=3)and(y=3)) then Result:=False;
+  funcA.getPoint_Fi(3, PDouble(funcA.Fval1));
 
-  SetLength(Yarray, 0 );
+  Assert((x=3)and(funcA.Fval1[0]=3));
+  if not((x=3)and(funcA.Fval1[0]=3)) then Result:=False;
+
+  SetLength(Yarray, 0);
+  SetLength(Farray, 0);
   end;
   //--------------------------------------------------------------------------
 function test_2():Boolean;
@@ -477,8 +497,7 @@ function test_2():Boolean;
   var
     i,Ylength: Integer;
     x,y: Double;
-    Yarray: DoubleArray;
-    Y2ptr: PDouble;
+    Yarray, Farray, Y2array: array of Double;
     cond1: Boolean;
 
   begin
@@ -487,6 +506,8 @@ function test_2():Boolean;
   funcA.ClearPoints;
   funcA.setFdim(Ylength);
   SetLength(Yarray,Ylength);
+  SetLength(Y2array,Ylength);
+  SetLength(Farray,Ylength);
 
   funcA.beginPoints();
   for i:=0 to 19 do begin // добавляем врукопашную 20 точек
@@ -495,7 +516,7 @@ function test_2():Boolean;
     Yarray[0] := y;
     Yarray[1] := y*y;
     Yarray[2] := y*y+5;
-    funcA.addPoint(x,Yarray);
+    funcA.addPoint(x, PDouble(Yarray));
     end;
   funcA.endPoints();
 
@@ -503,24 +524,26 @@ function test_2():Boolean;
   if not (funcA.pointsCount = 20) then Result:=False;
 
   x := funcA.getPoint_Xi(0); // контроль корректности записи-чтения
-  Y2ptr := funcA.getPoint_Fi(0);
-  cond1 := (x=0)and(Y2ptr[0]=0)and(Y2ptr[1]=0)and(Y2ptr[2]=5);
+  funcA.getPoint_Fi(0, PDouble(Y2array));
+  cond1 := (x=0)and(Y2array[0]=0)and(Y2array[1]=0)and(Y2array[2]=5);
   Assert(cond1);
   if not(cond1) then Result:=False;
 
   x := funcA.getPoint_Xi(3); // контроль корректности записи-чтения
-  Y2ptr := funcA.getPoint_Fi(3);
-  cond1 := (x=3)and(Y2ptr[0]=3)and(Y2ptr[1]=9)and(Y2ptr[2]=14);
+  funcA.getPoint_Fi(3, PDouble(Y2array));
+  cond1 := (x=3)and(Y2array[0]=3)and(Y2array[1]=9)and(Y2array[2]=14);
   Assert(cond1);
   if not(cond1) then Result:=False;
 
   x := funcA.getPoint_Xi(10); // контроль корректности записи-чтения
-  Y2ptr := funcA.getPoint_Fi(10);
-  cond1 := (x=10)and(Y2ptr[0]=10)and(Y2ptr[1]=100)and(Y2ptr[2]=105);
+  funcA.getPoint_Fi(10, PDouble(Y2array));
+  cond1 := (x=10)and(Y2array[0]=10)and(Y2array[1]=100)and(Y2array[2]=105);
   Assert(cond1);
   if not(cond1) then Result:=False;
 
-  SetLength(Yarray, 0 );
+  SetLength(Yarray, 0);
+  SetLength(Y2array, 0);
+  SetLength(Farray, 0);
   end;
   //-------------------------------------------------------------------------
 function test_3(): Boolean;
@@ -528,8 +551,8 @@ function test_3(): Boolean;
   var
     i,Ylength: Integer;
     x,y: Double;
-    Yarray: DoubleArray;
-    Y2ptr: PDouble;
+    Yarray,Y2array: array of Double;
+
     a_true: Boolean;
   begin
   Result := True;
@@ -537,6 +560,7 @@ function test_3(): Boolean;
   funcA.ClearPoints;
   funcA.setFdim(Ylength);
   SetLength(Yarray,Ylength);
+  SetLength(Y2array,Ylength);
 
   funcA.beginPoints();
   for i:=0 to 19 do begin // добавляем врукопашную 20 точек
@@ -545,7 +569,7 @@ function test_3(): Boolean;
     Yarray[0] := y;
     Yarray[1] := y*y;
     Yarray[2] := y*y+5;
-    funcA.addPoint(x,Yarray);
+    funcA.addPoint(x,PDouble(Yarray));
     end;
   funcA.endPoints();
 
@@ -554,26 +578,28 @@ function test_3(): Boolean;
 
   // на месте точки 5 должны быть значения точки 10
   x := funcA.getPoint_Xi(5);
-  Y2ptr := funcA.getPoint_Fi(5);
-  a_true := (x=10)and(Y2ptr[0]=10)and(Y2ptr[1]=100)and(Y2ptr[2]=105);
+  funcA.getPoint_Fi(5, PDouble(Y2array));
+  a_true := (x=10)and(Y2array[0]=10)and(Y2array[1]=100)and(Y2array[2]=105);
   Assert(a_true);
   if not(a_true) then Result:=False;
 
   // на месте точки 10 должны быть значения точки 5
   x := funcA.getPoint_Xi(10);
-  Y2ptr := funcA.getPoint_Fi(10);
-  a_true := (x=5)and(Y2ptr[0]=5)and(Y2ptr[1]=25)and(Y2ptr[2]=30);
+  funcA.getPoint_Fi(10, PDouble(Y2array));
+  a_true := (x=5)and(Y2array[0]=5)and(Y2array[1]=25)and(Y2array[2]=30);
   Assert(a_true);
   if not(a_true) then Result:=False;
 
   // проверяем, что не затерли значения точки 6
   x := funcA.getPoint_Xi(6);
-  Y2ptr := funcA.getPoint_Fi(6);
-  a_true := (x=6)and(Y2ptr[0]=6)and(Y2ptr[1]=36)and(Y2ptr[2]=41);
+  funcA.getPoint_Fi(6, PDouble(Y2array));
+  a_true := (x=6)and(Y2array[0]=6)and(Y2array[1]=36)and(Y2array[2]=41);
   Assert(a_true);
   if not(a_true) then Result:=False;
 
   SetLength(Yarray, 0 );
+  SetLength(Y2array, 0 );
+
   end;
 
 function test_4(): Boolean;
@@ -582,7 +608,7 @@ function test_4(): Boolean;
     Func_zero,Func_ones,Func_i,Func_downcount: TFndimFunctionByPoints1d;
     i: Integer;
     x: Double;
-    F: DoubleArray;
+    F: array of Double;
   const
     REALZERO = 1e-8;
   begin
@@ -602,13 +628,13 @@ function test_4(): Boolean;
     for i:=0 to 9 do begin
       x := i;
       F[0] := 0;
-      Func_zero.addPoint(x,F);
+      Func_zero.addPoint(x,PDouble(F));
       F[0] := 1;
-      Func_ones.addPoint(x,F);
+      Func_ones.addPoint(x,PDouble(F));
       F[0] := i;
-      Func_i.addPoint(x,F);
+      Func_i.addPoint(x,PDouble(F));
       F[0] := 9-i;
-      Func_downcount.addPoint(x,F);
+      Func_downcount.addPoint(x,PDouble(F));
     end;
 
     Func_zero.endPoints();
@@ -656,8 +682,8 @@ function test_4(): Boolean;
    Func_ones.beginPoints();
    F[0]:=1;
    x:=9;
-   Func_i.addPoint(x, F);
-   Func_ones.addPoint(x, F);
+   Func_i.addPoint(x, PDouble(F));
+   Func_ones.addPoint(x, PDouble(F));
    Func_i.endPoints();
    Func_ones.endPoints();
    a_true := Func_i.IsXduplicated();
@@ -679,7 +705,7 @@ function test_5(): Boolean;
     Func_zero,Func_ones,Func_i,Func_downcount: TFndimFunctionByPoints1d;
     i: Integer;
     x: Double;
-    F: DoubleArray;
+    F: array of Double;
   const
     REALZERO = 1e-8;
     VSIZE = 3;
@@ -709,22 +735,22 @@ function test_5(): Boolean;
       F[0] := 0;
       F[1] := 0;
       F[2] := 0;
-      Func_zero.addPoint(x,F);
+      Func_zero.addPoint(x,PDouble(F));
 
       F[0] := 1;
       F[1] := 1;
       F[2] := 1;
-      Func_ones.addPoint(x,F);
+      Func_ones.addPoint(x,PDouble(F));
 
       F[0] := i;
       F[1] := i;
       F[2] := i;
-      Func_i.addPoint(x,F);
+      Func_i.addPoint(x,PDouble(F));
 
       F[0] := 9-i;
       F[1] := 9-i;
       F[2] := 9-i;
-      Func_downcount.addPoint(x,F);
+      Func_downcount.addPoint(x,PDouble(F));
 
     end;
 
@@ -773,8 +799,8 @@ function test_5(): Boolean;
    Func_ones.beginPoints();
    F[0]:=1;
    x:=9;
-   Func_i.addPoint(x, F);
-   Func_ones.addPoint(x, F);
+   Func_i.addPoint(x, PDouble(F));
+   Func_ones.addPoint(x, PDouble(F));
    Func_i.endPoints();
    Func_ones.endPoints();
    a_true := Func_i.IsXduplicated();
@@ -795,7 +821,7 @@ function test_6(): Boolean;
   var
     i: NativeInt;
     x: Double;
-    F:DoubleArray;
+    F: array of Double;
   const
     REALZERO = 1e-8;
   begin
@@ -808,6 +834,7 @@ function test_6(): Boolean;
 
   funcC.ClearPoints;
   funcC.setFdim(1);
+
   SetLength(F, 1);
 
   funcA.beginPoints;
@@ -817,13 +844,13 @@ function test_6(): Boolean;
   for i:=-100 to 100 do begin
     x := i;
     F[0] := x;            // линейная
-    funcA.addPoint(x, F);
+    funcA.addPoint(x, PDouble(F));
 
     F[0] := x*x+x;
-    funcB.addPoint(x, F);
+    funcB.addPoint(x, PDouble(F));
 
     F[0] := sin(PI*x/20); // синус
-    funcC.addPoint(x, F);
+    funcC.addPoint(x, PDouble(F));
     end;
 
   funcA.endPoints;
@@ -832,9 +859,14 @@ function test_6(): Boolean;
 
   // кусочно-постоянная
   x := 0.1;
-  a_real := funcA.IntervalInterpolation(x)[0];
-  b_real := funcB.IntervalInterpolation(x)[0];
-  c_real := funcC.IntervalInterpolation(x)[0];
+  funcA.IntervalInterpolation(x, PDouble(funcA.Fval1));
+  a_real := funcA.Fval1[0];
+
+  funcB.IntervalInterpolation(x,PDouble(funcB.Fval1));
+  b_real := funcB.Fval1[0];
+
+  funcC.IntervalInterpolation(x,PDouble(funcC.Fval1));
+  c_real := funcC.Fval1[0];
 
   a_true := abs(a_real-0)<REALZERO;
   b_true := abs(b_real-0)<REALZERO;
@@ -844,9 +876,15 @@ function test_6(): Boolean;
   if not (a_true and b_true and c_true) then Result:=False;
 
   x := 10;
-  a_real := funcA.IntervalInterpolation(x)[0];
-  b_real := funcB.IntervalInterpolation(x)[0];
-  c_real := funcC.IntervalInterpolation(x)[0];
+
+  funcA.IntervalInterpolation(x, PDouble(funcA.Fval1));
+  a_real := funcA.Fval1[0];
+
+  funcB.IntervalInterpolation(x,PDouble(funcB.Fval1));
+  b_real := funcB.Fval1[0];
+
+  funcC.IntervalInterpolation(x,PDouble(funcC.Fval1));
+  c_real := funcC.Fval1[0];
 
   a_true := abs(a_real-10)<REALZERO;
   b_true := abs(b_real-110)<REALZERO;
@@ -857,9 +895,15 @@ function test_6(): Boolean;
 
   // кусочно-постоянная за пределами интервала аргументов - экстраполяция
   x := 110;
-  a_real := funcA.IntervalInterpolation(x)[0];
-  b_real := funcB.IntervalInterpolation(x)[0];
-  c_real := funcC.IntervalInterpolation(x)[0];
+
+  funcA.IntervalInterpolation(x, PDouble(funcA.Fval1));
+  a_real := funcA.Fval1[0];
+
+  funcB.IntervalInterpolation(x,PDouble(funcB.Fval1));
+  b_real := funcB.Fval1[0];
+
+  funcC.IntervalInterpolation(x,PDouble(funcC.Fval1));
+  c_real := funcC.Fval1[0];
 
   a_true := abs(a_real-100)<REALZERO;
   b_true := abs(100*100+100-b_real)<REALZERO;
@@ -870,9 +914,15 @@ function test_6(): Boolean;
 
   // кусочно-постоянная за пределами интервала аргументов - экстраполяция
   x := -110;
-  a_real := funcA.IntervalInterpolation(x)[0];
-  b_real := funcB.IntervalInterpolation(x)[0];
-  c_real := funcC.IntervalInterpolation(x)[0];
+
+  funcA.IntervalInterpolation(x, PDouble(funcA.Fval1));
+  a_real := funcA.Fval1[0];
+
+  funcB.IntervalInterpolation(x,PDouble(funcB.Fval1));
+  b_real := funcB.Fval1[0];
+
+  funcC.IntervalInterpolation(x,PDouble(funcC.Fval1));
+  c_real := funcC.Fval1[0];
 
   a_true := abs(a_real+100)<REALZERO;
   b_true := abs(100*100-100-b_real)<REALZERO;
@@ -883,9 +933,15 @@ function test_6(): Boolean;
 
   // линейная
   x := 0.1;
-  a_real := funcA.LinearInterpolation(x)[0];
-  b_real := funcB.LinearInterpolation(x)[0];
-  c_real := funcC.LinearInterpolation(x)[0];
+
+  funcA.LinearInterpolation(x, PDouble(funcA.Fval1));
+  a_real := funcA.Fval1[0];
+
+  funcB.LinearInterpolation(x,PDouble(funcB.Fval1));
+  b_real := funcB.Fval1[0];
+
+  funcC.LinearInterpolation(x,PDouble(funcC.Fval1));
+  c_real := funcC.Fval1[0];
 
   a_true := abs(a_real-0.1)<REALZERO;
   b_true := abs(b_real-0.2)<REALZERO;
@@ -895,9 +951,15 @@ function test_6(): Boolean;
   if not (a_true and b_true and c_true) then Result:=False;
 
   x := 10;
-  a_real := funcA.LinearInterpolation(x)[0];
-  b_real := funcB.LinearInterpolation(x)[0];
-  c_real := funcC.LinearInterpolation(x)[0];
+
+  funcA.LinearInterpolation(x, PDouble(funcA.Fval1));
+  a_real := funcA.Fval1[0];
+
+  funcB.LinearInterpolation(x,PDouble(funcB.Fval1));
+  b_real := funcB.Fval1[0];
+
+  funcC.LinearInterpolation(x,PDouble(funcC.Fval1));
+  c_real := funcC.Fval1[0];
 
   a_true := abs(a_real-10)<REALZERO;
   b_true := abs(b_real-110)<REALZERO;
@@ -908,9 +970,15 @@ function test_6(): Boolean;
 
   // линейная за пределами интервала аргументов - экстраполяция
   x := 110;
-  a_real := funcA.LinearInterpolation(x)[0];
-  b_real := funcB.LinearInterpolation(x)[0];
-  c_real := funcC.LinearInterpolation(x)[0];
+
+  funcA.LinearInterpolation(x, PDouble(funcA.Fval1));
+  a_real := funcA.Fval1[0];
+
+  funcB.LinearInterpolation(x,PDouble(funcB.Fval1));
+  b_real := funcB.Fval1[0];
+
+  funcC.LinearInterpolation(x,PDouble(funcC.Fval1));
+  c_real := funcC.Fval1[0];
 
   a_true := abs(a_real-110)<REALZERO;
   b_true := abs(12100-b_real)<REALZERO;
@@ -921,9 +989,15 @@ function test_6(): Boolean;
 
   // линейная за пределами интервала аргументов - экстраполяция
   x := -110;
-  a_real := funcA.LinearInterpolation(x)[0];
-  b_real := funcB.LinearInterpolation(x)[0];
-  c_real := funcC.LinearInterpolation(x)[0];
+
+  funcA.LinearInterpolation(x, PDouble(funcA.Fval1));
+  a_real := funcA.Fval1[0];
+
+  funcB.LinearInterpolation(x,PDouble(funcB.Fval1));
+  b_real := funcB.Fval1[0];
+
+  funcC.LinearInterpolation(x,PDouble(funcC.Fval1));
+  c_real := funcC.Fval1[0];
 
   a_true := abs(a_real+110)<REALZERO;
   b_true := abs(11880-b_real)<REALZERO;
@@ -942,7 +1016,7 @@ function test_7(): Boolean;
   var
     i: NativeInt;
     x: Double;
-    F:DoubleArray;
+    F: array of Double;
   const
     REALZERO = 1e-8;
   begin
@@ -958,15 +1032,27 @@ function test_7(): Boolean;
     F[0] := x;            // линейная
     F[1] := x*x+x;
     F[2] := sin(PI*x/20); // синус
-    funcA.addPoint(x, F);
+    funcA.addPoint(x, PDouble(F));
     end;
   funcA.endPoints;
 
   // кусочно-постоянная
   x := 0.1;
-  a_real := funcA.IntervalInterpolation(x)[0];
-  b_real := funcA.IntervalInterpolation(x)[1];
-  c_real := funcA.IntervalInterpolation(x)[2];
+
+  //a_real := funcA.IntervalInterpolation(x)[0];
+  //b_real := funcA.IntervalInterpolation(x)[1];
+  //c_real := funcA.IntervalInterpolation(x)[2];
+
+  funcA.IntervalInterpolation(x, PDouble(funcA.Fval1));
+  a_real := funcA.Fval1[0];
+  b_real := funcA.Fval1[1];
+  c_real := funcA.Fval1[2];
+
+  funcB.IntervalInterpolation(x,PDouble(funcB.Fval1));
+  b_real := funcB.Fval1[0];
+
+  funcC.IntervalInterpolation(x,PDouble(funcC.Fval1));
+  c_real := funcC.Fval1[0];
 
   a_true := abs(a_real-0)<REALZERO;
   b_true := abs(b_real-0)<REALZERO;
@@ -976,9 +1062,11 @@ function test_7(): Boolean;
   if not (a_true and b_true and c_true) then Result:=False;
 
   x := 10;
-  a_real := funcA.IntervalInterpolation(x)[0];
-  b_real := funcA.IntervalInterpolation(x)[1];
-  c_real := funcA.IntervalInterpolation(x)[2];
+
+  funcA.IntervalInterpolation(x, PDouble(funcA.Fval1));
+  a_real := funcA.Fval1[0];
+  b_real := funcA.Fval1[1];
+  c_real := funcA.Fval1[2];
 
   a_true := abs(a_real-10)<REALZERO;
   b_true := abs(b_real-110)<REALZERO;
@@ -989,9 +1077,10 @@ function test_7(): Boolean;
 
   // кусочно-постоянная за пределами интервала аргументов - экстраполяция
   x := 110;
-  a_real := funcA.IntervalInterpolation(x)[0];
-  b_real := funcA.IntervalInterpolation(x)[1];
-  c_real := funcA.IntervalInterpolation(x)[2];
+  funcA.IntervalInterpolation(x, PDouble(funcA.Fval1));
+  a_real := funcA.Fval1[0];
+  b_real := funcA.Fval1[1];
+  c_real := funcA.Fval1[2];
 
   a_true := abs(a_real-100)<REALZERO;
   b_true := abs(100*100+100-b_real)<REALZERO;
@@ -1002,9 +1091,10 @@ function test_7(): Boolean;
 
   // кусочно-постоянная за пределами интервала аргументов - экстраполяция
   x := -110;
-  a_real := funcA.IntervalInterpolation(x)[0];
-  b_real := funcA.IntervalInterpolation(x)[1];
-  c_real := funcA.IntervalInterpolation(x)[2];
+  funcA.IntervalInterpolation(x, PDouble(funcA.Fval1));
+  a_real := funcA.Fval1[0];
+  b_real := funcA.Fval1[1];
+  c_real := funcA.Fval1[2];
 
   a_true := abs(a_real+100)<REALZERO;
   b_true := abs(100*100-100-b_real)<REALZERO;
@@ -1015,9 +1105,10 @@ function test_7(): Boolean;
 
   // линейная
   x := 0.1;
-  a_real := funcA.LinearInterpolation(x)[0];
-  b_real := funcA.LinearInterpolation(x)[1];
-  c_real := funcA.LinearInterpolation(x)[2];
+  funcA.LinearInterpolation(x, PDouble(funcA.Fval1));
+  a_real := funcA.Fval1[0];
+  b_real := funcA.Fval1[1];
+  c_real := funcA.Fval1[2];
 
   a_true := abs(a_real-0.1)<REALZERO;
   b_true := abs(b_real-0.2)<REALZERO;
@@ -1027,9 +1118,10 @@ function test_7(): Boolean;
   if not (a_true and b_true and c_true) then Result:=False;
 
   x := 10;
-  a_real := funcA.LinearInterpolation(x)[0];
-  b_real := funcA.LinearInterpolation(x)[1];
-  c_real := funcA.LinearInterpolation(x)[2];
+  funcA.LinearInterpolation(x, PDouble(funcA.Fval1));
+  a_real := funcA.Fval1[0];
+  b_real := funcA.Fval1[1];
+  c_real := funcA.Fval1[2];
 
   a_true := abs(a_real-10)<REALZERO;
   b_true := abs(b_real-110)<REALZERO;
@@ -1040,9 +1132,10 @@ function test_7(): Boolean;
 
   // линейная за пределами интервала аргументов - экстраполяция
   x := 110;
-  a_real := funcA.LinearInterpolation(x)[0];
-  b_real := funcA.LinearInterpolation(x)[1];
-  c_real := funcA.LinearInterpolation(x)[2];
+  funcA.LinearInterpolation(x, PDouble(funcA.Fval1));
+  a_real := funcA.Fval1[0];
+  b_real := funcA.Fval1[1];
+  c_real := funcA.Fval1[2];
 
   a_true := abs(a_real-110)<REALZERO;
   b_true := abs(12100-b_real)<REALZERO;
@@ -1053,9 +1146,10 @@ function test_7(): Boolean;
 
   // линейная за пределами интервала аргументов - экстраполяция
   x := -110;
-  a_real := funcA.LinearInterpolation(x)[0];
-  b_real := funcA.LinearInterpolation(x)[1];
-  c_real := funcA.LinearInterpolation(x)[2];
+  funcA.LinearInterpolation(x, PDouble(funcA.Fval1));
+  a_real := funcA.Fval1[0];
+  b_real := funcA.Fval1[1];
+  c_real := funcA.Fval1[2];
 
   a_true := abs(a_real+110)<REALZERO;
   b_true := abs(11880-b_real)<REALZERO;
