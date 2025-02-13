@@ -32,13 +32,11 @@ type
     AFdim: NativeInt; // размер выходного вектора функции
     isBeginPointsEnter: Boolean; // состояние внутри вызовов beginPoints() и endPoints();
     msFvalues, msXvalues: TMemoryStream;
-    // последний индекс, найденный при вызове функции поиска индекса интервала
-    // - скорее всего он корректен для следующего вызова
-    LastIntervalIndex: NativeInt;
     Fval3,Fval4: array of double;
   public
     // переменные размерности выходного вектора для локального использования
     Fval1,Fval2: array of double;
+    ExtrapolationType: NativeInt;
 
     constructor Create();
     destructor Destroy;override;
@@ -49,15 +47,6 @@ type
     // обертки для чтения свойств
     function pointsCount: NativeInt;inline;
     function Fdim: NativeInt;inline; // размер выходного вектора функции,
-
-    // загрузка функции по точкам из файла на диске
-    function LoadFromTlb(fileName: string):Boolean;
-    function LoadFromCsv(fileName: string):Boolean;
-    function LoadFromJson(fileName: string):Boolean;
-    function LoadFromFile(fileName: string):Boolean;
-
-    // запись в файл
-    function SaveToCsv(fileName: string):Boolean;
 
     // конструирование функции добавлением точек врукопашную
     procedure beginPoints(); // вызвать перед началом работы
@@ -82,7 +71,7 @@ type
     function CmpWithFunction(Func2: TFndimFunctionByPoints1d): Double;
 
     // найти индекс точки - начала интервала, внутри которого лежит аргумент x
-    function FindIntervalIndex_ofX(x: Double): NativeInt;
+    function FindIntervalIndex_ofX(x: Double; var outOfXflag:Boolean): NativeInt;
     // найти значение функции по кусочно-постоянной интерполяции
     procedure IntervalInterpolation(x: Double; Fresult: PDouble);
     // найти значение функции по линейной интерполяции
@@ -102,6 +91,7 @@ begin
   setFdim(1); // размер выходного вектора функции - по умолчанию 1
   isBeginPointsEnter := False;
 
+  ExtrapolationType := 0;
 end;
 
 destructor TFndimFunctionByPoints1d.Destroy;
@@ -144,32 +134,6 @@ begin
   Result := AFdim;
 end;
 
-function TFndimFunctionByPoints1d.LoadFromTlb(fileName: string):Boolean;
-begin
-  Result := False;
-end;
-
-function TFndimFunctionByPoints1d.LoadFromCsv(fileName: string):Boolean;
-begin
-  Result := False;
-end;
-
-function TFndimFunctionByPoints1d.LoadFromJson(fileName: string):Boolean;
-begin
-  Result := False;
-end;
-
-function TFndimFunctionByPoints1d.LoadFromFile(fileName: string):Boolean;
-begin
-  Result := False;
-end;
-
-// запись в файл
-function TFndimFunctionByPoints1d.SaveToCsv(fileName: string):Boolean;
-begin
-  Result := False;
-end;
-
 // конструирование функции добавлением точек врукопашную
 procedure TFndimFunctionByPoints1d.beginPoints();
 // вызвать перед началом работы по добавлению точек
@@ -209,7 +173,6 @@ begin
   Result := Xptr[Pindex];
 end;
 
-//function TFndimFunctionByPoints1d.getPoint_Fi(Pindex: NativeInt): PDouble;
 procedure TFndimFunctionByPoints1d.getPoint_Fi(Pindex: NativeInt; Fresult: PDouble);
 // вернуть указатель на массив значений Y по индексу Pindex, т.е. векторное значение функции в точке
 var
@@ -369,68 +332,119 @@ begin
 end;
 
 // найти индекс точки - начала интервала, внутри которого лежит аргумент x
-function TFndimFunctionByPoints1d.FindIntervalIndex_ofX(x: Double): NativeInt;
+function TFndimFunctionByPoints1d.FindIntervalIndex_ofX(x: Double; var outOfXflag:Boolean): NativeInt;
 var
   i: NativeInt;
   x0: Double;
 begin
   Result := 0;
+  outOfXflag := False;
 
   // сперва ищем внутри интервала аргументов
   for i:=0 to pointsCount-2 do begin
     if((x>=getPoint_Xi(i))and(x<getPoint_Xi(i+1))) then begin
       Result := i;
       exit;
+      end;
     end;
-    end;
+
+  Result := 0;
+  outOfXflag := True;
 
   // случай аргумент за пределами
   if x< getPoint_Xi(0) then begin
     Result := 0;
     exit;
-  end
-  else if x>=getPoint_Xi(pointsCount-1) then begin
+    end;
+
+  if x>=getPoint_Xi(pointsCount-1) then begin
     Result := pointsCount-1;
     exit;
-  end;
+    end;
 
 end;
 
 // найти значение функции по кусочно-постоянной интерполяции
 procedure TFndimFunctionByPoints1d.IntervalInterpolation(x: Double; Fresult: PDouble);
 var
-  i: NativeInt;
+  i,j: NativeInt;
+  outOfXflag: Boolean;
 begin
-  i := FindIntervalIndex_ofX(x);
-  getPoint_Fi(i, Fresult);
+  i := FindIntervalIndex_ofX(x, outOfXflag);
+
+  if (not outOfXflag)or(ExtrapolationType=2) then begin // экстраполяция не требуется
+    getPoint_Fi(i, Fresult);
+    exit;
+    end;
+
+  if outOfXflag then begin
+    case ExtrapolationType of
+      0,2:  // константа вне диапазона, либо экстраполировать границы
+        begin
+        getPoint_Fi(i, Fresult);
+        exit;
+        end;
+
+      1: // ноль вне диапазона
+        begin
+          for j:=0 to Fdim-1 do begin
+            Fresult[j] := 0;
+            end;
+        end;
+      else
+        Assert(False,'метод экстраполяции '+IntToStr(ExtrapolationType)+' не реализован');
+      end;
+    end;
 end;
 
 // найти значение функции по линейной интерполяции
 procedure TFndimFunctionByPoints1d.LinearInterpolation(x: Double;Fresult: PDouble);
 var
-  i,k: NativeInt;
+  i,j,k: NativeInt;
   y,y1,y2,x1,x2,dy,dx,x0: Double;
+  outOfXflag: Boolean;
 begin
-  i := FindIntervalIndex_ofX(x);
+  i := FindIntervalIndex_ofX(x, outOfXflag);
 
-  if i=pointsCount-1 then begin // последняя точка интервала значит экстраполяция - берем ее и предпоследнюю.
-    Dec(i);
-  end;
+  if (not outOfXflag)or(ExtrapolationType=2) then begin
+    if i=pointsCount-1 then begin // последняя точка интервала значит экстраполяция - берем ее и предпоследнюю.
+      Dec(i);
+      end;
 
-  x1 := getPoint_Xi(i);
-  x2 := getPoint_Xi(i+1);
+    x1 := getPoint_Xi(i);
+    x2 := getPoint_Xi(i+1);
 
-  getPoint_Fi(i, PDouble(Fval3));
-  getPoint_Fi(i+1, PDouble(Fval4));
+    getPoint_Fi(i, PDouble(Fval3));
+    getPoint_Fi(i+1, PDouble(Fval4));
 
+    for k:=0 to Fdim-1 do begin
+      y1 := Fval3[k];
+      y2 := Fval4[k];
+      y := y1+(x-x1)*(y2-y1)/(x2-x1);
+      Fresult[k] :=y;
+      end;
 
-  for k:=0 to Fdim-1 do begin
-    y1 := Fval3[k];
-    y2 := Fval4[k];
-    y := y1+(x-x1)*(y2-y1)/(x2-x1);
-    Fresult[k] :=y;
-  end;
+    exit;
+    end;
 
+  if outOfXflag then begin
+    case ExtrapolationType of
+      0:  // константа вне диапазона
+        begin
+        getPoint_Fi(i, Fresult);
+        exit;
+        end;
+
+      1: // ноль вне диапазона
+        begin
+          for j:=0 to Fdim-1 do begin
+            Fresult[j] := 0;
+            end;
+        end;
+      else
+        Assert(False,'метод экстраполяции '+IntToStr(ExtrapolationType)+' не реализован');
+      end;
+    end;
 end;
 
 //===========================================================================
@@ -1169,6 +1183,10 @@ begin
   funcA := TFndimFunctionByPoints1d.Create;
   funcB := TFndimFunctionByPoints1d.Create;
   funcC := TFndimFunctionByPoints1d.Create;
+
+  funcA.ExtrapolationType := 2;
+  funcB.ExtrapolationType := 2;
+  funcC.ExtrapolationType := 2;
 
   try
     AssignFile(testLog, autoTest_FileName);

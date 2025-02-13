@@ -26,17 +26,28 @@ uses {$IFNDEF FPC}Windows,{$ENDIF}
 
 
 type
-
-// отладочный блок-компонент возвращает максимальное скалярное число из всех
-  // векторных входов
+/////////////////////////////////////////////////////////////////////////////
+// блок интерполяции по ТЗ от 3 февраля 2025, от одномерного аргумент
   TMyInterpolationBlock1 = class(TRunObject)
   protected
     Func: TFndimFunctionByPoints1d; // хранилище наших точек функции
 
+    InputsMode: NativeInt; // ПЕРЕЧИСЛЕНИЕ откуда берем входные данные
     Fdim: NativeInt;                // размерность выходного вектора функции
-    InterpolationType: NativeInt;   // тип интерполяции - кусочно-постоянная, линейная, Лагранжа и т.п.
-    ExtrapolationType: NativeInt;   // тип экстраполяции за пределами определения функции - константа, кусочно-постоянная и т.д.
+    InterpolationType: NativeInt;   // ПЕРЕЧИСЛЕНИЕ тип интерполяции - кусочно-постоянная, линейная, Лагранжа и т.п.
+    ExtrapolationType: NativeInt;   // ПЕРЕЧИСЛЕНИЕ тип экстраполяции за пределами определения функции - константа,ноль, интерполяция по крайним точкам
     LagrangeOrder: NativeInt; // порядок интерполяции для метода Лагранжа
+    FileName: string; // имя единого входного файла
+    FileNameArgsX: string; // имя входного файла для аргументов при раздельной загрузке
+    FileNameFuncTable: string; // имя входного файла для значений функции при раздельной загрузке
+    Xi_array: TExtArray; // точки аргуметнов Xi функции, если она задана через свойства объекта
+    Fi_array: TExtArray; // точки значений Fi функции, если она задана через свойства объекта
+
+    function LoadFuncFromProperties(): Boolean;
+    function LoadFuncFromFilesXiFi(): Boolean;
+    function LoadFuncFromFile(): Boolean;
+    function LoadFuncFromPorts(): Boolean;
+    function LoadFunc(): Boolean;
 
   public
     function       InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
@@ -47,73 +58,6 @@ type
   end;
 
 ///////////////////////////////////////////////////////////////////////////////
- //Блок многомерной линейной интерполяции
-
- TMyNDimInterpolationOld = class(TRunObject)
- public
-   tmpxp:         TExtArray2;
-   outmode:       NativeInt;
-   method:        NativeInt;
-   x_:            TExtArray2;
-   val_:          TExtArray;
-   u_,v_:         TExtArray;
-   ad_,k_:        TIntArray;
-   function       InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
-   function       RunFunc(var at,h : RealType;Action:Integer):NativeInt;override;
-   function       GetParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;override;
-   constructor    Create(Owner: TObject);override;
-   destructor     Destroy;override;
- end;
-
-
-  //Блок - интерполяция (по Лагранжу или сплайновая с произвольным порядком)
-  TMyInterpOld = class(TRunObject)
-  protected
-    SplineArr:     TExtArray2;
-    Ind:           array of NativeInt;
-    x_tab:         TExtArray2; //Массивы иcходных данных
-    y_tab:         TExtArray2;
-  public
-    //Переменные, доступные извне
-    Met,
-    Order,
-    N,
-    M,
-    Nfun:          NativeInt;  // число функции - только 1 поддерживает
-    SplineIsNatural:Boolean;
-    function       InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
-    function       RunFunc(var at,h : RealType;Action:Integer):NativeInt;override;
-    function       GetParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;override;
-    constructor    Create(Owner: TObject);override;
-    destructor     Destroy;override;
-  end;
-
-  // отладочный блок-компонент для быстрой проверки размерностей. Математическая операция - взятие модуля
-  //Размерности входных векторов долны совпадать. Размерность выходного вектора равна размерности входных.
-  TMyAbs1 = class(TRunObject)
-  protected
-    a:             TExtArray;
-  public
-    function       InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
-    function       RunFunc(var at,h : RealType;Action:Integer):NativeInt;override;
-    function       GetParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;override;
-    constructor    Create(Owner: TObject);override;
-    destructor     Destroy;override;
-  end;
-
-  // отладочный блок-компонент возвращает максимальное скалярное число из всех
-  // векторных входов
-  TMyMaxInputs1 = class(TRunObject)
-  protected
-    Func: TFndimFunctionByPoints1d;
-    Ndim: NativeInt;
-  public
-    function       InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
-    function       RunFunc(var at,h : RealType;Action:Integer):NativeInt;override;
-    function       GetParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;override;
-    constructor    Create(Owner: TObject);override;
-    destructor     Destroy;override;
-  end;
 
 implementation
 
@@ -122,11 +66,17 @@ constructor TMyInterpolationBlock1.Create;
 begin
   inherited;
   IsLinearBlock:=True;
+  Xi_array := TExtArray.Create(1); // точки аргументов Xi функции, если она задана через свойства объекта
+  Fi_array:= TExtArray.Create(1); // точки значений Fi функции, если она задана через свойства объекта
   Func := TFndimFunctionByPoints1d.Create;
+
+  //TFndimFunctionByPoints1d_testAll();
 end;
 
 destructor  TMyInterpolationBlock1.Destroy;
 begin
+  FreeAndNil(Xi_array);
+  FreeAndNil(Fi_array);
   FreeAndNil(Func);
   inherited;
 end;
@@ -135,6 +85,13 @@ function    TMyInterpolationBlock1.GetParamID;
 begin
   Result:=inherited GetParamID(ParamName,DataType,IsConst);
   if Result <> -1 then exit;
+
+  // ПЕРЕЧИСЛЕНИЕ откуда берем входные данные
+  if StrEqu(ParamName,'InputsMode') then begin
+    Result:=NativeInt(@InputsMode);
+    DataType:=dtInteger;
+    exit;
+  end;
 
   // размерность выходного вектора функции
   if StrEqu(ParamName,'Fdim') then begin
@@ -164,6 +121,36 @@ begin
     exit;
   end;
 
+  if StrEqu(ParamName,'FileName') then begin
+    Result:=NativeInt(@FileName);
+    DataType:=dtString;
+    exit;
+  end;
+
+  if StrEqu(ParamName,'Xi_array') then begin
+    Result:=NativeInt(Xi_array);
+    DataType:=dtDoubleArray;
+    exit;
+  end;
+
+  if StrEqu(ParamName,'Fi_array') then begin
+    Result:=NativeInt(Fi_array);
+    DataType:=dtDoubleArray;
+    exit;
+  end;
+
+  if StrEqu(ParamName,'FileNameArgsX') then begin
+    Result:=NativeInt(@FileNameArgsX);
+    DataType:=dtString;
+    exit;
+  end;
+
+  if StrEqu(ParamName,'FileNameFuncTable') then begin
+    Result:=NativeInt(@FileNameFuncTable);
+    DataType:=dtString;
+    exit;
+  end;
+
   ErrorEvent('параметр '+ParamName+' не найден', msWarning, VisualObject);
 end;
 
@@ -188,27 +175,224 @@ begin
                      exit;
                     end;
 
-                   //TODO зачем устанавливать размерность выходного вектора - УЗНАТЬ
+                   //TODO зачем устанавливать размерность производных выходного вектора - УЗНАТЬ
                    CY[0].Dim:=SetDim([Fdim]);
                  end;
   else
     Result:=inherited InfoFunc(Action,aParameter);
   end;
 end;
+//---------------------------------------------------------------------------
+
+function TMyInterpolationBlock1.LoadFuncFromProperties(): Boolean;
+var
+  i,j: Integer;
+  Xp: Double;
+begin
+  Result := True;
+
+  if Fi_array.Count<>Fdim*Xi_array.Count then begin //проверка корректности входных размеров
+    ErrorEvent('Число значений Fi_array и аргументов Xi_array входной функции не совпадает',msError,VisualObject);
+    Result := False;
+    exit;
+    end;
+
+  Func.ClearPoints();
+  Func.beginPoints;
+    for i:=0 to Xi_array.Count-1 do begin // идем по входному вектору и добавляем точки в функцию.
+      Xp := Xi_array.Arr[i];
+
+      for j:=0 to Fdim-1 do begin
+        Func.Fval1[j] := Fi_array.Arr[i*Fdim+j];
+        end;
+      Func.addPoint(Xp,PDouble(Func.Fval1));
+      end;
+  Func.endPoints;
+
+end;
+
+function TMyInterpolationBlock1.LoadFuncFromFilesXiFi(): Boolean;
+label
+  OnExit;
+var
+  tableX,tableF: TTable1;
+  i,j,k, m,n: Integer;
+  Xp,v: Double;
+
+begin
+  Result := True;
+  tableX := TTable1.Create(FileNameArgsX);
+  tableF := TTable1.Create(FileNameFuncTable);
+
+  if not tableX.OpenFromFile(FileNameArgsX) then begin
+    ErrorEvent('Файл '+FileNameArgsX+' невозможно считать',msError,VisualObject);
+    Result := False;
+    goto OnExit;
+    end;
+
+  if not tableF.OpenFromFile(FileNameFuncTable) then begin
+    ErrorEvent('Файл '+FileNameFuncTable+' невозможно считать',msError,VisualObject);
+    Result := False;
+    goto OnExit;
+    end;
+
+  if tableX.px.count<>tableF.px.count then begin
+    ErrorEvent('Файлы '+FileNameArgsX+' и '+FileNameFuncTable+' содержат разное число строк',msError,VisualObject);
+    Result := False;
+    goto OnExit;
+    end;
+
+
+  Func.ClearPoints();
+  // TODO сбой памяти при закрытии - выснить как изменять то, что в свойствах
+  Fdim := 1+tableF.FunsCount;
+  Func.setFdim(Fdim);
+  Func.beginPoints;
+
+  // идем по входному вектору и добавляем точки в функцию.
+    for i:=0 to tableX.px.count-1 do begin
+      Xp := tableX.px[i];
+      // TODO переделать - дурацкий метод, но работает
+      Func.Fval1[0] := tableF.px[i]; // первая точка - из первого столбца аргументов
+      for j:=0 to tableF.FunsCount-1 do begin // остаьные точки - из ветора значений
+        Func.Fval1[j+1] := tableF.py.Arr[j][i]
+        end;
+
+      Func.addPoint(Xp,PDouble(Func.Fval1));
+      end;
+  Func.endPoints;
+
+OnExit:
+  FreeAndNil(tableX);
+  FreeAndNil(tableF);
+end;
+//----------------------------------------------------------------------
+
+function TMyInterpolationBlock1.LoadFuncFromFile(): Boolean;
+label
+  OnExit;
+var
+  table1: TTable1;
+  i,j,k, m,n: Integer;
+  Xp,v: Double;
+
+begin
+  Result := True;
+  table1 := TTable1.Create(FileName);
+  if not table1.OpenFromFile(FileName) then begin
+    ErrorEvent('Файл '+FileName+' невозможно считать',msError,VisualObject);
+    Result := False;
+    goto OnExit;
+    end;
+
+  Func.ClearPoints();
+  // TODO - сбой памяти при закрытии - как изменять то, что в свойствах???
+  Fdim := table1.FunsCount;
+  Func.setFdim(Fdim);
+
+  Func.beginPoints;
+    for i:=0 to table1.px.count-1 do begin // идем по входному вектору и добавляем точки в функцию.
+      Xp := table1.px[i];
+
+      for j:=0 to table1.FunsCount-1 do begin
+        Func.Fval1[j] := table1.py.Arr[j][i]
+        end;
+
+      Func.addPoint(Xp,PDouble(Func.Fval1));
+      end;
+  Func.endPoints;
+
+OnExit:
+  FreeAndNil(table1);
+end;
+
+function TMyInterpolationBlock1.LoadFuncFromPorts(): Boolean;
+var
+  i,j: Integer;
+  Xp: Double;
+begin
+  Result := True;
+  // 0. проверяем размерности входных портов
+  // U[0] - args - значение аргумента X
+  // U[1] - args_arr - массив заданных значений аргумента
+  // U[2] - func_table - матрица значений функции
+  //--------------------------------------------------------
+  if Length(U)<>3 then begin
+    ErrorEvent('Число входных портов не равно 3',msError,VisualObject);
+    Result := False;
+    exit;
+    end;
+
+  if U[2].Count<>Fdim*U[1].Count then begin //проверка корректности входных размеров
+    ErrorEvent('Число значений Fi и аргументов Xi входной функции не совпадает',msError,VisualObject);
+    Result := False;
+    exit;
+    end;
+
+  Func.ClearPoints();
+  Func.beginPoints;
+    for i:=0 to U[1].Count-1 do begin // идем по входному вектору и добавляем точки в функцию.
+      Xp := U[1][i];
+      for j:=0 to Fdim-1 do begin
+        Func.Fval1[j] := U[2][i*Fdim+j];
+        end;
+      Func.addPoint(Xp,PDouble(Func.Fval1));
+      end;
+  Func.endPoints;
+
+end;
+
+function TMyInterpolationBlock1.LoadFunc(): Boolean;
+begin
+  case InputsMode of
+    0:
+      Result := LoadFuncFromProperties();
+    1:
+      Result := LoadFuncFromFilesXiFi();
+    2:
+      Result := LoadFuncFromFile();
+    3:
+      Result := LoadFuncFromPorts();
+    else begin
+      Result := False;
+      ErrorEvent('Метод задания функции '+IntToStr(InputsMode)+' не реализован',msError,VisualObject);
+    end;
+  end;
+
+  // проверяем, упорядочены ли точки. При необходимости - упорядочиваем
+  if not Func.IsXsorted then begin
+    Func.sortPoints;
+    ErrorEvent('значения Xi были упорядочены по возрастанию', msWarning, VisualObject );
+    end;
+
+  // проверяем, есть ли в аргументах Х дубликаты
+  if Func.IsXduplicated then begin
+    ErrorEvent('значения Xi имеют дубликаты', msWarning, VisualObject );
+    end;
+
+end;
 
 function   TMyInterpolationBlock1.RunFunc(var at,h : RealType; Action:Integer):NativeInt;
 var
     i,j : Integer;
     v,vmax   : RealType;
-    Xp   : double;
-    i0,j0: Integer;
     Xarg: Double;
-
 begin
   Result := r_Success;
 
   case Action of
-    f_InitState,
+    f_InitState:
+              begin
+                //------------------------------------------------------------
+                // 1. инициализируем наш набор точек ЗАНОВО
+                if not LoadFunc() then begin
+                  Result := r_Fail;
+                  exit;
+                  end;
+
+                Func.ExtrapolationType := ExtrapolationType;
+              end;
+
     f_RestoreOuts,
     f_UpdateJacoby,
     f_UpdateOuts,
@@ -216,42 +400,15 @@ begin
               begin
                 ///////////////////////////////////////////////////////////////
                 // порядок действий -
-                // 0. проверяем размерности входных портов
-                // 1. инициализируем наш набор точек ЗАНОВО
+                // 1.Считаем, что все успешно инициализированно в f_InitState
                 // 2. определяем из входа аргумент X
                 // 3. делаем необходимый вызов интерполяции
                 // 4. формируем и возвращаем вектор-ответ
 
-                // 0. проверяем размерности входных портов
-                if Length(U)<>3 then begin
-                  ErrorEvent('Число входных портов не равно 3',msError,VisualObject);
-                  Result := r_Fail;
-                  exit;
-                  end;
-
-                if U[0].Count<>Fdim*U[1].Count then begin //проверка корректности входных размеров
-                  ErrorEvent('Число значений Fi и аргументов Xi входной функции не совпадает',msError,VisualObject);
-                  Result := r_Fail;
-                  exit;
-                  end;
-
-                // 1. инициализируем наш набор точек ЗАНОВО
-                Func.ClearPoints();
-
-                Func.beginPoints;
-                for i:=0 to U[0].Count-1 do begin // идем по входному вектору и добавляем точки в функцию.
-                  Xp := U[1][i];
-                  
-                  for j:=0 to Fdim-1 do begin
-                    Func.Fval1[j] := U[0][i*Fdim+j];
-                    end;
-
-                  Func.addPoint(Xp,PDouble(Func.Fval1));
-                  end;
-                Func.endPoints;
-
+                //------------------------------------------------------------
+                // 1. - TODO - Считаем, что все успешно инициализированно в f_InitState
                 // 2. определяем из входа аргумент X
-                Xarg := U[2][0];
+                Xarg := U[0][0];
 
                 // 3. делаем необходимый вызов интерполяции
                 if InterpolationType=1 then begin // линейная
@@ -278,468 +435,4 @@ end;
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-{*******************************************************************************
-                       Многомерная линейная интерполяция
-*******************************************************************************}
-constructor  TMyNDimInterpolationOld.Create;
-begin
-  inherited;
-  method:=0;
-  outmode:=0;
-  tmpxp:=TExtArray2.Create(0,0);
-  x_:=TExtArray2.Create(0,0);
-  val_:=TExtArray.Create(0);
-  u_:=TExtArray.Create(0);
-  v_:=TExtArray.Create(0);
-  ad_:=TIntArray.Create(0);
-  k_:=TIntArray.Create(0);
-end;
-
-destructor   TMyNDimInterpolationOld.Destroy;
-begin
-  tmpxp.Free;
-  x_.Free;
-  val_.Free;
-  u_.Free;
-  v_.Free;
-  ad_.Free;
-  k_.Free;
-  inherited;
-end;
-
-function     TMyNDimInterpolationOld.InfoFunc;
- var p,i,nn: NativeInt;
-begin
-  Result:=0;
-  case Action of
-    i_GetPropErr: if (x_.CountX > 0) then begin
-
-                    //Вычисляем суммарную размерность
-                    p:=x_[0].Count;
-                    for I := 1 to x_.CountX - 1 do p:=p*x_[i].Count;
-
-                    //Проверяем всё ли задано в массиве val_
-                    if val_.Count > 0 then begin
-                      if val_.Count < p then begin
-                         ErrorEvent(txtOrdinatesDefineIncomplete+IntToStr(p),msWarning,VisualObject);
-                      end;
-                    end
-                    else begin
-                      ErrorEvent(txtOrdinatesNotDefinedError,msError,VisualObject);
-                      Result:=r_Fail;  //Если возвращаем > 0 - то значит произошла ошибка
-                    end;
-
-                  end
-                  else begin
-                    ErrorEvent(txtDimensionsNotDefined,msError,VisualObject);
-                    Result:=r_Fail;  //Если возвращаем > 0 - то значит произошла ошибка
-                  end;
-    i_GetCount:   begin
-                    //Размерность выхода = размерность входа делённая на размерность матрицы абсцисс
-                    cY[0].Dim:= SetDim([ GetFullDim(cU[0].Dim) div x_.CountX ]);
-                    //Условие кратности рзмерности
-                    nn := cY[0].Dim[0]*x_.CountX;
-                    if GetFullDim(cU[0].Dim) <> nn then cU[0].Dim:=SetDim([nn]);
-                  end
-  else
-    Result:=inherited InfoFunc(Action,aParameter);
-  end;
-end;
-
-function    TMyNDimInterpolationOld.GetParamID;
-begin
-  Result:=inherited GetParamID(ParamName,DataType,IsConst);
-  if Result = -1 then begin
-    if StrEqu(ParamName,'outmode') then begin
-      Result:=NativeInt(@outmode);
-      DataType:=dtInteger;
-    end
-    else
-    if StrEqu(ParamName,'method') then begin
-      Result:=NativeInt(@method);
-      DataType:=dtInteger;
-    end
-    else
-    if StrEqu(ParamName,'x') then begin
-      Result:=NativeInt(x_);
-      DataType:=dtMatrix;
-    end
-    else
-    if StrEqu(ParamName,'values') then begin
-      Result:=NativeInt(val_);
-      DataType:=dtDoubleArray;
-    end;
-  end
-end;
-
-function    TMyNDimInterpolationOld.RunFunc;
- var
-    i,j: integer;
-begin
-  Result:=0;
-  case Action of
-    f_InitObjects:    begin
-                        //Подчитываем к-во точек по размерности входа
-                        tmpxp.ChangeCount(GetFullDim(cU[0].Dim) div x_.CountX,x_.CountX);
-                        //Инициализируем временные массивы
-                        u_.Count  := x_.CountX;
-                        v_.Count  := 1 shl (x_.CountX);
-                        ad_.Count := 1 shl (x_.CountX);
-                        k_.Count  := x_.CountX;
-                      end;
-    f_RestoreOuts,
-    f_InitState,
-    f_UpdateOuts,
-    f_UpdateJacoby,
-    f_GoodStep      : begin
-                        j:=0;
-                        for i := 0 to tmpxp.CountX - 1 do begin
-                          Move(U[0].Arr^[j],tmpxp[i].Arr^[0],tmpxp[i].Count*SizeOfDouble);
-                          inc(j,tmpxp[i].Count);
-                        end;
-
-                        case method of
-                          1: nstep_interp(x_,val_,tmpxp,Y[0],outmode,k_);
-                        else
-                          nlinear_interp(x_,val_,tmpxp,Y[0],outmode,u_,v_,ad_,k_);
-                        end;
-
-                      end;
-  end
-end;
-
-
-
-{*******************************************************************************
-                            Интерполяция
-*******************************************************************************}
-constructor TMyInterpOld.Create;
-begin
-  inherited;
-  // почему массивы двумерные?
-  SplineArr:=TExtArray2.Create(1,1);
-  x_tab:=TExtArray2.Create(1,1);
-  y_tab:=TExtArray2.Create(1,1);
-  SplineIsNatural:=True;
-end;
-
-destructor  TMyInterpOld.Destroy;
-begin
-  inherited;
-  FreeAndNil(SplineArr);
-  FreeAndNil(x_tab);
-  FreeAndNil(y_tab);
-end;
-
-function    TMyInterpOld.GetParamID;
-begin
-  Result:=inherited GetParamID(ParamName,DataType,IsConst);
-  if Result <> -1 then exit;
-
-    if StrEqu(ParamName,'met') then begin
-      Result:=NativeInt(@met);
-      DataType:=dtInteger;
-      exit;
-    end;
-
-    if StrEqu(ParamName,'m') then begin
-      Result:=NativeInt(@m);
-      DataType:=dtInteger;
-      exit;
-    end;
-
-    if StrEqu(ParamName,'n') then begin
-      Result:=NativeInt(@n);
-      DataType:=dtInteger;
-      exit;
-    end;
-
-    if StrEqu(ParamName,'nfun') then begin
-      Result:=NativeInt(@nfun);
-      DataType:=dtInteger;
-      exit;
-    end;
-
-    if StrEqu(ParamName,'order') then begin
-      Result:=NativeInt(@order);
-      DataType:=dtInteger;
-      exit;
-    end;
-
-    if StrEqu(ParamName,'isnatural') then begin
-      Result:=NativeInt(@SplineIsNatural);
-      DataType:=dtBool;
-      exit;
-    end;
-
-end;
-
-function    TMyInterpOld.InfoFunc;
-begin
-  Result:=0;
-  case Action of
-    i_GetCount:  begin
-                   CU[0].Dim:=SetDim([N]);
-                   CU[1].Dim:=SetDim([N*Nfun]);
-                   CY[0].Dim:=SetDim([GetFullDim(CU[2].Dim)*Nfun]);
-                 end;
-  else
-    Result:=inherited InfoFunc(Action,aParameter);
-  end;
-end;
-
-function   TMyInterpOld.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
-var i,j,c   : Integer;
-    py      : PExtArr;
-    px      : PExtArr;
-
- function  CheckChanges:boolean;
-  var j: integer;
- begin
-   Result:=False;
-   for j:=0 to N - 1 do
-     if (x_tab[i].Arr^[j] <> px[j]) or (y_tab[i].Arr^[j] <> py[j]) then begin
-       x_tab[i].Arr^[j]:=px[j];
-       y_tab[i].Arr^[j]:=py[j];
-       Result:=True;
-     end;
- end;
-
-begin
-  Result:=0;
-  case Action of
-    f_InitObjects: begin
-                     //Здесь устанавливаем нужные размерности вспомогательных
-                     SetLength(Ind,GetFullDim(cU[2].Dim));
-                     ZeroMemory(Pointer(Ind), GetFullDim(cU[2].Dim)*SizeOf(NativeInt));
-                     SplineArr.ChangeCount(5,N);
-                     x_tab.ChangeCount(Nfun,N);
-                     y_tab.ChangeCount(Nfun,N);
-                   end;
-    f_InitState,
-    f_RestoreOuts,
-    f_UpdateJacoby,
-    f_UpdateOuts,
-    f_GoodStep: begin
-                  px:=U[0].Arr;
-                  py:=U[1].arr;
-                  c:=0;
-                  for i:=0 to Nfun - 1 do begin
-                   case Met of
-                   0: for j:=0 to U[2].Count - 1 do begin
-                         Y[0].arr^[i*U[2].Count+j]:=Lagrange(px^,py^,U[2].arr^[j],Order,M);
-                         inc(c);
-                      end;
-                   1: begin
-                       //Вычисление натурального кубического сплайна
-                       if CheckChanges or (Action = f_InitState) then NaturalSplineCalc(px,py,SplineArr.Arr,N,SplineIsNatural);
-                       for j:=0 to U[2].Count - 1 do begin
-                         Y[0].arr^[c] :=Interpol(U[2].Arr^[j],SplineArr.Arr,5,Ind[j]);
-                         inc(c);
-                       end
-                      end;
-                   2: begin
-                       if CheckChanges or (Action = f_InitState) then LInterpCalc(px,py,SplineArr.Arr,N);
-                       for j:=0 to U[2].Count - 1 do begin
-                         Y[0].arr^[c] :=Interpol(U[2].Arr^[j],SplineArr.Arr,3,Ind[j]);
-                         inc(c);
-                       end
-                      end;
-                   end;
-                   py:=@py^[N];
-
-		              end
-                 end;
-  end
-end;
-
-//===========================================================================
-constructor TMyMaxInputs1.Create;
-begin
-  inherited;
-  IsLinearBlock:=True;
-end;
-
-destructor  TMyMaxInputs1.Destroy;
-begin
-  inherited;
-end;
-
-function    TMyMaxInputs1.GetParamID;
-begin
-  Result:=inherited GetParamID(ParamName,DataType,IsConst);
-  if Result <> -1 then exit;
-
-  if StrEqu(ParamName,'Ndim') then begin
-    Result:=NativeInt(@Ndim);
-    DataType:=dtInteger;
-    exit;
-  end;
-
-end;
-
-function    TMyMaxInputs1.InfoFunc;
-  var i,j,maxn,maxd,dimi:  integer;
-  val:Double;
-begin
-  Result := r_Success;
-
-  case Action of
-    i_GetInit:   Result := r_Success;
-    i_GetCount:  begin
-                   if Length( cU ) = 0 then begin  // входной вектор нулевой длины - невозможная ситуация
-                     ErrorEvent(txtSumErr,msError,VisualObject);
-                     Result:=r_Fail;
-                     exit;
-                   end;
-                   for i:=0 to Length(cU)-1 do begin
-                     end;
-                   //CU[0].Dim:=SetDim([Ndim]);
-                   //CU[1].Dim:=SetDim([Ndim*Ndim]);
-                   //CY[0].Dim:=SetDim([GetFullDim(CU[2].Dim)*Ndim]);
-                   CY[0].Dim:=SetDim([1]);//SetDim([GetFullDim(CU[2].Dim)*Ndim]);
-                 end;
-  else
-    Result:=inherited InfoFunc(Action,aParameter);
-  end;
-end;
-
-function   TMyMaxInputs1.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
-var i,j : Integer;
-    v,vmax   : RealType;
-    k   : double;
-    i0,j0: Integer;
-
-begin
-  Result := r_Success;
-
-  case Action of
-    f_InitState,
-    f_RestoreOuts,
-    f_UpdateJacoby,
-    f_UpdateOuts,
-    f_GoodStep:
-              begin
-                vmax:=U[0][0];
-                for i:=0 to Length(U)-1 do begin
-                  for j:=0 to U[i].count-1 do begin
-                    v:=U[i][j];
-                    if v>vmax then vmax:=v;
-                    end;
-                  end;
-
-                Y[0][0] := vmax;
-              end;
-  end;
-end;
-
-//===========================================================================
-//===========================================================================
-constructor TMyAbs1.Create;
-begin
-  inherited;
-  a:=TExtArray.Create(0);
-  IsLinearBlock:=True;
-end;
-
-destructor  TMyAbs1.Destroy;
-begin
-  inherited;
-  FreeAndNil(a);
-end;
-
-function    TMyAbs1.GetParamID;
-begin
-  Result:=inherited GetParamID(ParamName,DataType,IsConst);
-  if Result = -1 then begin
-    if StrEqu(ParamName,'a') then begin
-      Result:=NativeInt(a);
-      DataType:=dtDoubleArray;
-    end;
-  end
-end;
-
-function    TMyAbs1.InfoFunc;
-  var i,maxn,maxd,dimi:  integer;
-begin
-  Result := r_Success;
-
-  case Action of
-    i_GetCount:  begin
-                   if Length( cU ) = 0 then begin  // входной вектор нулевой длины - невозможная ситуация
-                     ErrorEvent(txtSumErr,msError,VisualObject);
-                     Result:=r_Fail;
-                     exit;
-                   end;
-
-                   //Для определениы выходной размерности используем
-                   //максимальную вычисленную размерность
-                   maxn:=0;
-                   maxd:=GetFullDim(CU[maxn].Dim);
-                   for i:=1 to Length(cU) - 1 do begin
-                     dimi:=GetFullDim(CU[i].Dim);
-                     if dimi > maxd then begin
-                       maxd:=dimi;
-                       maxn:=i;
-                     end;
-                   end;
-
-                   CY[0].Dim:=CU[maxn].Dim;
-                   for i:=1 to Length(cU) - 1 do cU[i].Dim:=cU[maxn].Dim;
-                 end;
-  else
-    Result:=inherited InfoFunc(Action,aParameter);
-  end;
-end;
-
-function   TMyAbs1.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
-var i,j : Integer;
-    s,v   : RealType;
-    k   : double;
-    i0,j0: Integer;
-
-begin
-  Result:=0;
-  case Action of
-    f_InitState,
-    f_RestoreOuts,
-    f_UpdateJacoby,
-    f_UpdateOuts,
-    f_GoodStep:
-              begin
-                for i:=0 to Y[0].count - 1 do begin
-                   s:=0;
-                   k:=1;
-                   if i < a.Count then begin
-                       k:=a.Arr^[i];
-                     end  else begin
-                       ErrorEvent('входная размерность больше вектора а',msError,VisualObject);
-                     end;
-
-                   for j:=0 to Length( cU ) - 1 do begin
-                     s:=s + U[j].Arr^[i]*k;
-                   end;
-                   //Y[0].Arr^[i]:=s;
-                   Y[0].Arr^[i]:=abs(s);
-                  end
-
-                 {
-                  for i:=0 to Y[0].count - 1 do begin
-                   s:=0;
-                   k:=1;
-                   for j:=0 to Length( cU ) - 1 do begin
-                     if j < a.Count then k:=a.Arr^[j];
-                     //s:=s + U[j].Arr^[i]*k;
-                     s:=s + U[j].Arr^[i]*k;
-                   end;
-                   //Y[0].Arr^[i]:=s;
-                   Y[0].Arr^[i]:=abs(s);
-                 end
-                 }
-              end;
-  end;
-end;
-//===========================================================================
-
-//---------------------------------------------------------------------------
 end.
