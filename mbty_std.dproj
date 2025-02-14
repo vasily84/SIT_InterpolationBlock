@@ -184,6 +184,7 @@
         <Debugger_HostApplication>C:\SimInTech64\bin\mmain.exe</Debugger_HostApplication>
         <VerInfo_Locale>1033</VerInfo_Locale>
         <AppDPIAwarenessMode>none</AppDPIAwarenessMode>
+        <DCC_Optimize>false</DCC_Optimize>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_3)'!=''">
         <Version>7.0</Version>

@@ -22,7 +22,7 @@ interface
 
 uses {$IFNDEF FPC}Windows,{$ENDIF}
      Classes, MBTYArrays, DataTypes, DataObjts, SysUtils, abstract_im_interface, RunObjts, Math, LinFuncs,
-     tbls, Data_blocks, InterpolFuncs, mbty_std_consts, uExtMath, InterpolationBlocks_unit;
+     tbls, Data_blocks, InterpolFuncs, mbty_std_consts, uExtMath, InterpolationBlocks_unit,InterpolationBlocks_unit_tests;
 
 
 type
@@ -70,7 +70,7 @@ begin
   Fi_array:= TExtArray.Create(1); // точки значений Fi функции, если она задана через свойства объекта
   Func := TFndimFunctionByPoints1d.Create;
 
-  //TFndimFunctionByPoints1d_testAll();
+  //TFndimFunctionByPoints1d_testAll('e:\USERDISK\SIM_WORK\ЅЋќ »_»Ќ“≈–ѕќЋя÷»»\InterpolationBlocks_autoTestLog.txt');
 end;
 
 destructor  TMyInterpolationBlock1.Destroy;
@@ -370,11 +370,16 @@ begin
     ErrorEvent('значени€ Xi имеют дубликаты', msWarning, VisualObject );
     end;
 
+  //
+  if (InterpolationType = 3) and (LagrangeOrder > Func.pointsCount) then begin
+    ErrorEvent('пор€док метода Ћагранжа больше заданного числа точек, применим пор€док = '+IntToStr(Func.pointsCount), msWarning, VisualObject );
+    end;
+
 end;
 
 function   TMyInterpolationBlock1.RunFunc(var at,h : RealType; Action:Integer):NativeInt;
 var
-    i,j : Integer;
+    i,j,k : Integer;
     v,vmax   : RealType;
     Xarg: Double;
 begin
@@ -391,6 +396,12 @@ begin
                   end;
 
                 Func.ExtrapolationType := ExtrapolationType;
+                Func.LagrangeOrder := LagrangeOrder;
+
+                if Func.LagrangeOrder>Func.pointsCount then begin
+                  Func.LagrangeOrder := Func.pointsCount;
+                  end;
+
               end;
 
     f_RestoreOuts,
@@ -408,20 +419,42 @@ begin
                 //------------------------------------------------------------
                 // 1. - TODO - —читаем, что все успешно инициализированно в f_InitState
                 // 2. определ€ем из входа аргумент X
-                Xarg := U[0][0];
+                for k:=0 to U[0].Count-1 do begin
+                  Xarg := U[0][k];
 
-                // 3. делаем необходимый вызов интерпол€ции
-                if InterpolationType=1 then begin // линейна€
-                  Func.LinearInterpolation(Xarg, PDouble(Func.Fval1));
-                  end
-                else begin                       // кусочно-посто€нна€
-                  Func.IntervalInterpolation(Xarg, PDouble(Func.Fval1));
+                  // 3. делаем необходимый вызов интерпол€ции
+                  case InterpolationType of
+                    0:
+                      begin
+                        Func.IntervalInterpolation(Xarg, PDouble(Func.Fval1));
+                      end;
+                    1:
+                      begin
+                        Func.LinearInterpolation(Xarg, PDouble(Func.Fval1));
+                      end;
+                    2:
+                      begin
+                        Func.SplineInterpolation(Xarg, PDouble(Func.Fval1));
+                      end;
+                    3:
+                      begin
+                        Func.LagrangeInterpolation(Xarg, PDouble(Func.Fval1));
+                      end;
+
+                    else
+                      begin
+                        ErrorEvent('ћетод интерпол€ции функции '+IntToStr(InterpolationType)+' не реализован',msError,VisualObject);
+                        Result := r_Fail;
+                        exit;
+                      end;
                   end;
 
-                // 4. формируем и возвращаем вектор-ответ
-                for j:=0 to Fdim-1 do begin
-                  Y[0][j] :=  Func.Fval1[j];
-                  end;
+                  // 4. формируем и возвращаем вектор-ответ
+                  for j:=0 to Fdim-1 do begin
+                    Y[0][k*Fdim+j] :=  Func.Fval1[j];
+                    end;
+
+                end;
 
                 EXIT;   // работа выполнена!!!
 
