@@ -151,7 +151,7 @@ begin
     exit;
   end;
 
-  ErrorEvent('параметр '+ParamName+' не найден', msWarning, VisualObject);
+  ErrorEvent('параметр '+ParamName+'В блоке MyInterpolationBlock1 не найден', msWarning, VisualObject);
 end;
 
 function    TMyInterpolationBlock1.InfoFunc;
@@ -242,11 +242,13 @@ begin
     goto OnExit;
     end;
 
+  if Fdim <> (1+tableF.FunsCount) then begin
+    ErrorEvent('Размерность функции из файла = '+IntToStr((1+tableF.FunsCount))+' и свойства Fdim= '+IntToStr(Fdim)+' не совпадает',msError,VisualObject);
+    Result := False;
+    goto OnExit;
+    end;
 
   Func.ClearPoints();
-  // TODO сбой памяти при закрытии - выснить как изменять то, что в свойствах
-  Fdim := 1+tableF.FunsCount;
-  Func.setFdim(Fdim);
   Func.beginPoints;
 
   // идем по входному вектору и добавляем точки в функцию.
@@ -285,12 +287,15 @@ begin
     goto OnExit;
     end;
 
-  Func.ClearPoints();
-  // TODO - сбой памяти при закрытии - как изменять то, что в свойствах???
-  Fdim := table1.FunsCount;
-  Func.setFdim(Fdim);
+  if (Fdim <> table1.FunsCount) then begin
+    ErrorEvent('Размерность функции из файла = '+IntToStr((table1.FunsCount))+' и свойства Fdim= '+IntToStr(Fdim)+' не совпадает',msError,VisualObject);
+    Result := False;
+    goto OnExit;
+    end;
 
+  Func.ClearPoints();
   Func.beginPoints;
+
     for i:=0 to table1.px.count-1 do begin // идем по входному вектору и добавляем точки в функцию.
       Xp := table1.px[i];
 
