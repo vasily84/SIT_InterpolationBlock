@@ -1125,6 +1125,7 @@
                 <ProjectRoot Platform="Win64" Name="$(PROJECTNAME)"/>
                 <ProjectRoot Platform="Win64x" Name="$(PROJECTNAME)"/>
             </Deployment>
+            <ModelSupport>False</ModelSupport>
         </BorlandProject>
         <ProjectFileVersion>12</ProjectFileVersion>
     </ProjectExtensions>
@@ -1149,6 +1150,9 @@
         <DCCReference Include="Vectors.pas"/>
         <DCCReference Include="uOptimizers.pas"/>
         <DCCReference Include="InterpolationBlocks.pas"/>
+        <DCCReference Include="InterpolationBlocks_unit.pas"/>
+        <DCCReference Include="InterpolationBlocks_unit_tests.pas"/>
+        <DCCReference Include="Keybrd.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

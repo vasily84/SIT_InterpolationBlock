@@ -27,8 +27,8 @@ uses {$IFNDEF FPC}Windows,{$ENDIF}
 
 type
 /////////////////////////////////////////////////////////////////////////////
-// блок интерполяции по ТЗ от 3 февраля 2025, от одномерного аргумент
-  TMyInterpolationBlock1 = class(TRunObject)
+// блок интерполяции по ТЗ от 3 февраля 2025, от одномерного аргумента
+  TInterpolationBlock1 = class(TRunObject)
   protected
     Func: TFndimFunctionByPoints1d; // хранилище наших точек функции
 
@@ -60,9 +60,10 @@ type
 ///////////////////////////////////////////////////////////////////////////////
 
 implementation
+uses RealArrays;
 
 //===========================================================================
-constructor TMyInterpolationBlock1.Create;
+constructor TInterpolationBlock1.Create;
 begin
   inherited;
   IsLinearBlock:=True;
@@ -73,7 +74,7 @@ begin
   //TFndimFunctionByPoints1d_testAll('e:\USERDISK\SIM_WORK\БЛОКИ_ИНТЕРПОЛЯЦИИ\InterpolationBlocks_autoTestLog.txt');
 end;
 
-destructor  TMyInterpolationBlock1.Destroy;
+destructor  TInterpolationBlock1.Destroy;
 begin
   FreeAndNil(Xi_array);
   FreeAndNil(Fi_array);
@@ -81,7 +82,7 @@ begin
   inherited;
 end;
 
-function    TMyInterpolationBlock1.GetParamID;
+function    TInterpolationBlock1.GetParamID;
 begin
   Result:=inherited GetParamID(ParamName,DataType,IsConst);
   if Result <> -1 then exit;
@@ -154,9 +155,7 @@ begin
   ErrorEvent('параметр '+ParamName+'В блоке MyInterpolationBlock1 не найден', msWarning, VisualObject);
 end;
 
-function    TMyInterpolationBlock1.InfoFunc;
-  var i,j,maxn,maxd,dimi:  integer;
-  val:Double;
+function    TInterpolationBlock1.InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;
 begin
   Result := r_Success;
 
@@ -184,7 +183,7 @@ begin
 end;
 //---------------------------------------------------------------------------
 
-function TMyInterpolationBlock1.LoadFuncFromProperties(): Boolean;
+function TInterpolationBlock1.LoadFuncFromProperties(): Boolean;
 var
   i,j: Integer;
   Xp: Double;
@@ -211,13 +210,13 @@ begin
 
 end;
 
-function TMyInterpolationBlock1.LoadFuncFromFilesXiFi(): Boolean;
+function TInterpolationBlock1.LoadFuncFromFilesXiFi(): Boolean;
 label
   OnExit;
 var
   tableX,tableF: TTable1;
-  i,j,k, m,n: Integer;
-  Xp,v: Double;
+  i,j: Integer;
+  Xp: Double;
 
 begin
   Result := True;
@@ -270,13 +269,13 @@ OnExit:
 end;
 //----------------------------------------------------------------------
 
-function TMyInterpolationBlock1.LoadFuncFromFile(): Boolean;
+function TInterpolationBlock1.LoadFuncFromFile(): Boolean;
 label
   OnExit;
 var
   table1: TTable1;
-  i,j,k, m,n: Integer;
-  Xp,v: Double;
+  i,j: Integer;
+  Xp: Double;
 
 begin
   Result := True;
@@ -311,7 +310,7 @@ OnExit:
   FreeAndNil(table1);
 end;
 
-function TMyInterpolationBlock1.LoadFuncFromPorts(): Boolean;
+function TInterpolationBlock1.LoadFuncFromPorts(): Boolean;
 var
   i,j: Integer;
   Xp: Double;
@@ -347,7 +346,7 @@ begin
 
 end;
 
-function TMyInterpolationBlock1.LoadFunc(): Boolean;
+function TInterpolationBlock1.LoadFunc(): Boolean;
 begin
   case InputsMode of
     0:
@@ -382,10 +381,9 @@ begin
 
 end;
 
-function   TMyInterpolationBlock1.RunFunc(var at,h : RealType; Action:Integer):NativeInt;
+function   TInterpolationBlock1.RunFunc(var at,h : RealType; Action:Integer):NativeInt;
 var
-    i,j,k : Integer;
-    v,vmax   : RealType;
+    j,k : Integer;
     Xarg: Double;
 begin
   Result := r_Success;

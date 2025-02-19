@@ -309,7 +309,7 @@ const
     (Name:'TTrigger_JK';      RunClass:TTrigger_JK),
     //
 
-     (Name:'TMyInterpolationBlock1';      RunClass:TMyInterpolationBlock1),
+     (Name:'TInterpolationBlock1';      RunClass:TInterpolationBlock1),
      (Name:'TUserKeybrd';      RunClass:TUserKeybrd)
   );
 
