@@ -250,8 +250,6 @@ begin
   case Action of
       i_GetCount:
         begin
-          //cY[0].Dim:=SetDim([VK_codes.Count]);
-
           StrList := TStringList.Create;
           StrList.Delimiter       := ',';
           StrList.StrictDelimiter := True;
