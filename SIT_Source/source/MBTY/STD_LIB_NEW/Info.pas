@@ -40,7 +40,7 @@ implementation
 
 uses Src, Dif, Operations, Nonlines, Discrete, Vectors, Func_blocks, Keys,
      Logs, Trigger,Timers,Data_blocks, Stat_Blocks, lae_objects, uOptimizers,
-     elec_base, uCrossZero, InterpolationBlocks, Keybrd;// in 'InterpolationBlocks.pas';
+     elec_base, uCrossZero, InterpolationBlocks, Keybrd, NewNDInterpol;
 
 function  Init:boolean;
 begin
@@ -67,7 +67,7 @@ type
   //    в соответствии с этой таблицей создаются соответсвующие run-объекты   //
   //**************************************************************************//
 const
-  ClassTable:array[0..210] of TClassRecord =
+  ClassTable:array[0..211] of TClassRecord =
   (
     //Блоки - источники
     (Name:'ttimesource' ;RunClass:TTimeSource),
@@ -310,7 +310,8 @@ const
     //
 
      (Name:'TInterpolationBlock1';      RunClass:TInterpolationBlock1),
-     (Name:'TUserKeybrd';      RunClass:TUserKeybrd)
+     (Name:'TUserKeybrd';      RunClass:TUserKeybrd),
+     (Name:'TNewNDInterpol';      RunClass:TNewNDInterpol)
   );
 
 

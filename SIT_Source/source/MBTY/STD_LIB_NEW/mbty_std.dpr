@@ -39,7 +39,8 @@ uses
   InterpolationBlocks in 'InterpolationBlocks.pas',
   InterpolationBlocks_unit in 'InterpolationBlocks_unit.pas',
   InterpolationBlocks_unit_tests in 'InterpolationBlocks_unit_tests.pas',
-  Keybrd in 'Keybrd.pas';
+  Keybrd in 'Keybrd.pas',
+  NewNDInterpol in 'NewNDInterpol.pas';
 
 {$R *.res}
 

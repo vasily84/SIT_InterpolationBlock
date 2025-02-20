@@ -18,7 +18,6 @@ uses {$IFNDEF FPC}Windows,{$ENDIF}
      Classes, MBTYArrays, DataTypes, DataObjts, SysUtils, abstract_im_interface, RunObjts, Math, LinFuncs,
      tbls, Data_blocks, InterpolFuncs, mbty_std_consts, uExtMath, InterpolationBlocks_unit,InterpolationBlocks_unit_tests;
 
-
 type
 /////////////////////////////////////////////////////////////////////////////
 // блок ввода с клавиатуры
@@ -37,8 +36,23 @@ type
 ///////////////////////////////////////////////////////////////////////////////
 
 implementation
-
 uses System.UITypes, RealArrays, IntArrays;
+
+const
+{$IFNDEF ENG}
+  txtKeyUnknown1 = 'Значение клавиши "';
+  txtKeyUnknown2 = '" не определено';
+  txtUselessKeyboard = 'Блок клавиатурного ввода не опрашивает ни одной клавиши';
+  txtParamUnknown1 = 'параметр ';
+  txtParamUnknown2 = ' в блоке не найден';
+{$ELSE}
+  txtKeyUnknown1 = 'Key labeled "';
+  txtKeyUnknown2 = '" is undefined';
+  txtUselessKeyboard = 'UserKeyboard block poll nothing';
+  txtParamUnknown1 = 'parameter ';
+  txtParamUnknown2 = ' is undefined';
+{$ENDIF}
+
 
 constructor TUserKeybrd.Create;
 begin
@@ -133,16 +147,17 @@ begin
   checkKeyLabel('VK_RWIN', 'Win ПРАВ', vkRWin); //92
   checkKeyLabel('VK_APPS', 'vkApps', vkApps); //93
   checkKeyLabel('VK_SLEEP', 'vkSleep', vkSleep); //95
-  checkKeyLabel('VK_NUMPAD0', 'vkNumpad0', vkNumpad0); //96
-  checkKeyLabel('VK_NUMPAD1', 'vkNumpad1', vkNumpad1); //97
-  checkKeyLabel('VK_NUMPAD2', 'vkNumpad2', vkNumpad2); //98
-  checkKeyLabel('VK_NUMPAD3', 'vkNumpad3', vkNumpad3); //99
-  checkKeyLabel('VK_NUMPAD4', 'vkNumpad4', vkNumpad4); //100
-  checkKeyLabel('VK_NUMPAD5', 'vkNumpad5', vkNumpad5); //101
-  checkKeyLabel('VK_NUMPAD6', 'vkNumpad6', vkNumpad6); //102
-  checkKeyLabel('VK_NUMPAD7', 'vkNumpad7', vkNumpad7); //103
-  checkKeyLabel('VK_NUMPAD8', 'vkNumpad8', vkNumpad8); //104
-  checkKeyLabel('VK_NUMPAD9', 'vkNumpad9', vkNumpad9); //105
+  checkKeyLabel('VK_NUMPAD0', 'Numpad 0', vkNumpad0); //96
+  checkKeyLabel('VK_NUMPAD1', 'Numpad 1', vkNumpad1); //97
+  checkKeyLabel('VK_NUMPAD2', 'Numpad 2', vkNumpad2); //98
+  checkKeyLabel('VK_NUMPAD3', 'Numpad 3', vkNumpad3); //99
+  checkKeyLabel('VK_NUMPAD4', 'Numpad 4', vkNumpad4); //100
+  checkKeyLabel('VK_NUMPAD5', 'Numpad 5', vkNumpad5); //101
+  checkKeyLabel('VK_NUMPAD6', 'Numpad 6', vkNumpad6); //102
+  checkKeyLabel('VK_NUMPAD7', 'Numpad 7', vkNumpad7); //103
+  checkKeyLabel('VK_NUMPAD8', 'Numpad 8', vkNumpad8); //104
+  checkKeyLabel('VK_NUMPAD9', 'Numpad 9', vkNumpad9); //105
+
   checkKeyLabel('VK_MULTIPLY', 'vkMultiply', vkMultiply); //106
   checkKeyLabel('VK_ADD', 'vkAdd', vkAdd); //107
   checkKeyLabel('VK_SEPARATOR', 'vkSeparator', vkSeparator); //108
@@ -176,9 +191,6 @@ begin
   checkKeyLabel('VK_NUMLOCK', 'Num Lock', vkNumLock); //144
   checkKeyLabel('VK_SCROLL', 'Scroll Lock', vkScroll); //145
 
-{
-// исключили эту часть кодов, ибо нет уверенности что  она работает единообразно в Windows, Linux, RaspberryPi
-// но удалять этот комментарий тоже не нужно - при кастомизации под конретную ОС он точно пригодится
 
 // VK_L & VK_R - left and right Alt, Ctrl and Shift virtual keys.
 //  Used only as parameters to GetAsyncKeyState() and GetKeyState().
@@ -236,7 +248,7 @@ begin
   checkKeyLabel('VK_NONAME', 'vkNoName', vkNoName); //252
   checkKeyLabel('VK_PA1', 'vkPA1', vkPA1); //253
   checkKeyLabel('VK_OEM_CLEAR', 'vkOemClear', vkOemClear); //254
-}
+
 end;
 //===========================================================================
 
@@ -249,21 +261,28 @@ begin
   Result:=r_Success;
 
   case Action of
-      i_GetCount:
+      i_GetPropErr:
         begin
           slist1 := TStringList.Create;
           slist1.LineBreak := #13#10;
           slist1.Text := KeysSet.Items;
 
-          // проверка, что все имена клавиш заданы верно
+          // проверка, что все имена клавиш во множестве заданы верно
           for j:=0 to slist1.Count-1 do begin
             str1 := slist1.Strings[j];
             if VkStringToCode(str1)=0 then begin
-              ErrorEvent('Значение клавиши "'+str1+'" не определено в UserKeybrd',msError,VisualObject);
+              ErrorEvent(txtKeyUnknown1 + str1 + txtKeyUnknown2,msError, VisualObject);
               Result:=r_Fail;
               FreeAndNil(slist1);
               exit;
               end;
+            end;
+
+          if Length(KeysSet.Selection)=0 then begin
+            ErrorEvent(txtUselessKeyboard, msError, VisualObject);
+            Result:=r_Fail;
+            FreeAndNil(slist1);
+            exit;
             end;
 
           vk_codes.ChangeCount(Length(KeysSet.Selection));
@@ -273,13 +292,12 @@ begin
             vk_codes[i] := VkStringToCode(str1);
             end;
 
-          cY[0].Dim:=SetDim([VK_codes.Count]);
-
-          if Length(KeysSet.Selection)=0 then begin
-            ErrorEvent('Блок клавиатурного ввода не опрашивает ни одной клавиши',msError,VisualObject);
-            end;
-
           FreeAndNil(slist1);
+        end;
+
+      i_GetCount:
+        begin
+          cY[0].Dim:=SetDim([VK_codes.Count]);
         end
   else
     Result:=inherited InfoFunc(Action,aParameter);
@@ -317,7 +335,7 @@ begin
       exit;
     end;
 
-  ErrorEvent('параметр '+ParamName+' в блоке UserKeybrd не найден', msWarning, VisualObject);
+  ErrorEvent(txtParamUnknown1 + ParamName + txtParamUnknown2, msWarning, VisualObject);
 end;
 
 //===========================================================================
