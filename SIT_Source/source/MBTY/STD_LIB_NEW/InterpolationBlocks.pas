@@ -34,14 +34,28 @@ type
 
     InputsMode: NativeInt; // ПЕРЕЧИСЛЕНИЕ откуда берем входные данные
     Fdim: NativeInt;                // размерность выходного вектора функции
-    InterpolationType: NativeInt;   // ПЕРЕЧИСЛЕНИЕ тип интерполяции - кусочно-постоянная, линейная, Лагранжа и т.п.
+    //InterpolationType: NativeInt;   // ПЕРЕЧИСЛЕНИЕ тип интерполяции - кусочно-постоянная, линейная, Лагранжа и т.п.
     ExtrapolationType: NativeInt;   // ПЕРЕЧИСЛЕНИЕ тип экстраполяции за пределами определения функции - константа,ноль, интерполяция по крайним точкам
-    LagrangeOrder: NativeInt; // порядок интерполяции для метода Лагранжа
+    //LagrangeOrder: NativeInt; // порядок интерполяции для метода Лагранжа
     FileName: string; // имя единого входного файла
     FileNameArgsX: string; // имя входного файла для аргументов при раздельной загрузке
     FileNameFuncTable: string; // имя входного файла для значений функции при раздельной загрузке
-    Xi_array: TExtArray; // точки аргуметнов Xi функции, если она задана через свойства объекта
-    Fi_array: TExtArray; // точки значений Fi функции, если она задана через свойства объекта
+
+    property_Xi_array: TExtArray; // точки аргументов Xi функции, если она задана через свойства объекта
+    property_Fi_array: TExtArray; // точки значений Fi функции, если она задана через свойства объекта
+
+
+    InterpolationType,                       //Переменные, доступные извне
+    LagrangeOrder,
+    Npoints, // число точек функции
+    M_LagrangeShift,
+    Nfun:          NativeInt; // размерность выходного вектора функции
+    SplineIsNatural:Boolean;
+    SplineArr:     TExtArray2;
+    Ind:           array of NativeInt;
+
+    x_tab:         TExtArray2; //Массивы изходных данных
+    y_tab:         TExtArray2;
 
     function LoadFuncFromProperties(): Boolean;
     function LoadFuncFromFilesXiFi(): Boolean;
@@ -67,8 +81,8 @@ constructor TInterpolationBlock1.Create;
 begin
   inherited;
   IsLinearBlock:=True;
-  Xi_array := TExtArray.Create(1); // точки аргументов Xi функции, если она задана через свойства объекта
-  Fi_array:= TExtArray.Create(1); // точки значений Fi функции, если она задана через свойства объекта
+  property_Xi_array := TExtArray.Create(1); // точки аргументов Xi функции, если она задана через свойства объекта
+  property_Fi_array:= TExtArray.Create(1); // точки значений Fi функции, если она задана через свойства объекта
   Func := TFndimFunctionByPoints1d.Create;
 
   //TFndimFunctionByPoints1d_testAll('e:\USERDISK\SIM_WORK\БЛОКИ_ИНТЕРПОЛЯЦИИ\InterpolationBlocks_autoTestLog.txt');
@@ -76,8 +90,8 @@ end;
 
 destructor  TInterpolationBlock1.Destroy;
 begin
-  FreeAndNil(Xi_array);
-  FreeAndNil(Fi_array);
+  FreeAndNil(property_Xi_array);
+  FreeAndNil(property_Fi_array);
   FreeAndNil(Func);
   inherited;
 end;
@@ -129,13 +143,13 @@ begin
   end;
 
   if StrEqu(ParamName,'Xi_array') then begin
-    Result:=NativeInt(Xi_array);
+    Result:=NativeInt(property_Xi_array);
     DataType:=dtDoubleArray;
     exit;
   end;
 
   if StrEqu(ParamName,'Fi_array') then begin
-    Result:=NativeInt(Fi_array);
+    Result:=NativeInt(property_Fi_array);
     DataType:=dtDoubleArray;
     exit;
   end;
@@ -155,6 +169,7 @@ begin
   ErrorEvent('параметр '+ParamName+'В блоке MyInterpolationBlock1 не найден', msWarning, VisualObject);
 end;
 
+{
 function    TInterpolationBlock1.InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;
 begin
   Result := r_Success;
@@ -181,6 +196,7 @@ begin
     Result:=inherited InfoFunc(Action,aParameter);
   end;
 end;
+}
 //---------------------------------------------------------------------------
 
 function TInterpolationBlock1.LoadFuncFromProperties(): Boolean;
@@ -190,7 +206,7 @@ var
 begin
   Result := True;
 
-  if Fi_array.Count<>Fdim*Xi_array.Count then begin //проверка корректности входных размеров
+  if property_Fi_array.Count<>Fdim*property_Xi_array.Count then begin //проверка корректности входных размеров
     ErrorEvent('Число значений Fi_array и аргументов Xi_array входной функции не совпадает',msError,VisualObject);
     Result := False;
     exit;
@@ -198,11 +214,11 @@ begin
 
   Func.ClearPoints();
   Func.beginPoints;
-    for i:=0 to Xi_array.Count-1 do begin // идем по входному вектору и добавляем точки в функцию.
-      Xp := Xi_array.Arr[i];
+    for i:=0 to property_Xi_array.Count-1 do begin // идем по входному вектору и добавляем точки в функцию.
+      Xp := property_Xi_array.Arr[i];
 
       for j:=0 to Fdim-1 do begin
-        Func.Fval1[j] := Fi_array.Arr[i*Fdim+j];
+        Func.Fval1[j] := property_Fi_array.Arr[i*Fdim+j];
         end;
       Func.addPoint(Xp,PDouble(Func.Fval1));
       end;
@@ -381,6 +397,7 @@ begin
 
 end;
 
+{
 function   TInterpolationBlock1.RunFunc(var at,h : RealType; Action:Integer):NativeInt;
 var
     j,k : Integer;
@@ -466,7 +483,107 @@ begin
   end;
 end;
 
+}
 //===========================================================================
+function    TInterpolationBlock1.InfoFunc;
+begin
+  Result:=0;
+  case Action of
+    i_GetCount:  begin
+                   CU[0].Dim:=SetDim([Npoints]);
+                   CU[1].Dim:=SetDim([Npoints*Nfun]);
+                   CY[0].Dim:=SetDim([GetFullDim(CU[2].Dim)*Nfun]);
+                 end;
+  else
+    Result:=inherited InfoFunc(Action,aParameter);
+  end;
+end;
+
+// оригинальная версия, проверенная временем. После Рефакторинга.
+function   TInterpolationBlock1.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
+var
+  i,j,c   : Integer;
+  py      : PExtArr;
+  px      : PExtArr;
+
+function  IsNewData:boolean;
+// входной вектор был изменен?
+var
+  j: integer;
+begin
+  Result := False;
+
+  for j:=0 to Npoints - 1 do // идем по данным порта, если видим неравенство - данные новые.
+    if (x_tab[i].Arr^[j] <> px[j]) or (y_tab[i].Arr^[j] <> py[j]) then begin
+      x_tab[i].Arr^[j] := px[j];
+      y_tab[i].Arr^[j] := py[j];
+      Result:=True;
+      end;
+end;
+
+begin
+  Result:=0;
+  case Action of
+    f_InitObjects: begin
+                     //Здесь устанавливаем нужные размерности вспомогательных
+                     SetLength(Ind,GetFullDim(cU[2].Dim));
+                     ZeroMemory(Pointer(Ind), GetFullDim(cU[2].Dim)*SizeOf(NativeInt));
+                     SplineArr.ChangeCount(5,Npoints);
+                     x_tab.ChangeCount(Nfun,Npoints);
+                     y_tab.ChangeCount(Nfun,Npoints);
+                   end;
+    f_InitState,
+    f_RestoreOuts,
+    f_UpdateJacoby,
+    f_UpdateOuts,
+    f_GoodStep: begin
+                  // U[0] - args - значение аргумента X
+                  // U[1] - args_arr - массив заданных значений аргумента
+                  // U[2] - func_table - матрица значений функции
+                  px := U[1].Arr;
+                  py := U[2].Arr;
+                  c := 0;
+
+                  for i:=0 to Nfun - 1 do begin
+                   case InterpolationType of
+
+                     0: begin // Лагранж
+                          for j:=0 to U[0].Count - 1 do begin
+                            Y[0].arr^[i*U[0].Count+j] := Lagrange(px^,py^,U[0].arr^[j],LagrangeOrder,M_LagrangeShift);
+                            inc(c);
+                            end;
+                        end;
+
+                     1: begin //Вычисление натурального кубического сплайна
+                          if IsNewData or (Action = f_InitState) then begin
+                            NaturalSplineCalc(px, py, SplineArr.Arr, Npoints, SplineIsNatural );
+                            end;
+
+                          for j:=0 to U[0].Count-1 do begin
+                            Y[0].arr^[c] := Interpol(U[0].Arr^[j], SplineArr.Arr, 5, Ind[j] );
+                            inc(c);
+                            end;
+                        end;
+
+                     2: begin // Линейная интерполяция
+                          if IsNewData or (Action = f_InitState) then begin
+                            LInterpCalc(px, py, SplineArr.Arr, Npoints );
+                            end;
+
+                          for j:=0 to U[0].Count-1 do begin
+                            Y[0].arr^[c] := Interpol(U[0].Arr^[j], SplineArr.Arr, 3, Ind[j] );
+                            inc(c);
+                            end;
+                        end;
+
+                     end;
+
+                   py:=@py^[Npoints];
+
+		              end
+                 end;
+  end
+end;
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////

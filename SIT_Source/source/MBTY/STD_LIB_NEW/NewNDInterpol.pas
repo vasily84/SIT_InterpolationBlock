@@ -48,7 +48,7 @@ type
 
 implementation
 
-uses RealArrays;
+uses System.StrUtils, RealArrays;
 
 constructor  TNewNDInterpol.Create;
 begin
@@ -138,7 +138,8 @@ begin
   Result:=0;
   case Action of
     f_InitObjects:    begin
-                        LoadDataFromProperties();
+                        //LoadDataFromProperties();
+                        LoadDataFromFiles();
                           //Подчитываем к-во точек по размерности входа
                         tmpXp.ChangeCount(GetFullDim(cU[0].Dim) div Xtable.CountX,Xtable.CountX);
 
@@ -174,28 +175,66 @@ begin
 end;
 
 //---------------------------------------------------------------------------
+procedure RemoveCommentsFromStrings(var Strings:TStringList);
+// пустые строки, строки начинающиеся с $, части строк за // - отбрасываем
+var
+  slist2: TStringList;
+  i,position: Integer;
+  str1: string;
+begin
+  slist2 := TStringList.Create;
+  // отбрасываем комментарии и пустые строки
+  for i:=0 to Strings.Count-1 do begin
+    str1 := Strings.Strings[i];
+    if StartsText('$', str1) then continue;
+
+    position := Pos('//',str1);
+    if position>=1 then begin // отбрасываем закомментированый хвост
+      SetLength(str1, position);
+      end;
+
+    str1 := Trim(str1);
+    if str1='' then continue; // отбрасываем пустые строки
+    slist2.Add(str1);
+    end;
+
+  Strings.Assign(slist2);
+  FreeAndNil(slist2);
+end;
+//--------------------------------------------------------------------------
+
 function Load_TExtArray2_FromFile(FileName: string; var arrayVect: TExtArray2): Boolean;
 // загрузить массив векторов из файла
 var
-  slist1,slist2: TStringList;
-  str1,str2: string;
+  slist1,slist2,slist3: TStringList;
+  str1,str2, str3: string;
   v1: RealType;
-  i,j: Integer;
+  i,j, position: integer;
 begin
   // пример файла [[0 , 1 , 2 , 9];[0 , 5 , 8];[0 , 3]]
+  // пустые строки, строки начинающиеся с $, части строк за // - отбрасываем
+  Result := True;
   try
-    Result := True;
-    slist2 := TStringList.Create;
-
     slist1 := TStringList.Create;
-    slist1.LineBreak := ';';
+    slist2 := TStringList.Create;
+    slist3 := TStringList.Create;
+
     slist1.LoadFromFile(FileName);
+    // отбрасываем комментарии и пустые строки
+    RemoveCommentsFromStrings(slist1);
+
+    slist1.LineBreak := ';';
+
     str1 := slist1.Text;
+    //TODO - добавить проверку наличия двойных скобок.
+    // заменяем двойные скобки на одинарные
     str1 := StringReplace(str1, '[[', '[', [rfReplaceAll, rfIgnoreCase]);
     str1 := StringReplace(str1, ']]', ']', [rfReplaceAll, rfIgnoreCase]);
 
+    // случай запятые вместо двоеточий.
     str1 := StringReplace(str1, '],', '];', [rfReplaceAll, rfIgnoreCase]);
     str1 := StringReplace(str1, '] ,', '];', [rfReplaceAll, rfIgnoreCase]);
+
     slist1.Text := str1;
 
     arrayVect.ChangeCount(slist1.Count, 1);
@@ -219,18 +258,16 @@ begin
       end;
   except
     Result := False;
-    FreeAndNil(slist1);
-    FreeAndNil(slist2);
-    exit;
   end;
 
   FreeAndNil(slist1);
   FreeAndNil(slist2);
+  FreeAndNil(slist3);
 end;
 
 //---------------------------------------------------------------------------
 function Load_TExtArray_FromFile(FileName: string; var array1: TExtArray): Boolean;
-// загрузить массив векторов из файла
+// загрузить вектор из файла
 var
   slist1: TStringList;
   str1: string;
@@ -238,12 +275,14 @@ var
   i: Integer;
 begin
   // пример файла [0 , 0.1 , 1.1 , 1.2 , 3.5 , 3.3 , 6.1 , 6.2 , 7.1 , 7.2 , 9.1 , 9.2 , 8.1 , 8.3 , 5.6 , 5.9 , 3.7 , 3.9 , 18.1 , 18.3 , 15.6 , 5.9 , 13.7 , 13.9]
+  Result := True;
 
   try
-    Result := True;
     slist1 := TStringList.Create;
-    slist1.LineBreak := ',';
     slist1.LoadFromFile(FileName);
+    RemoveCommentsFromStrings(slist1);
+
+    slist1.LineBreak := ',';
     str1 := slist1.Text;
     str1 := StringReplace(str1, '[', ' ', [rfReplaceAll, rfIgnoreCase]);
     str1 := StringReplace(str1, ']', ' ', [rfReplaceAll, rfIgnoreCase]);
@@ -263,14 +302,11 @@ begin
 
   except
     Result := False;
-    FreeAndNil(slist1);
-    exit;
   end;
 
   FreeAndNil(slist1);
 end;
 //---------------------------------------------------------------------------
-
 function TNewNDInterpol.LoadDataFromFiles(): Boolean;
 // загрузить данные из свойств в расчетные Xarg Fval
 var
