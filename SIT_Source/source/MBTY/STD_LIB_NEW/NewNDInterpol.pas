@@ -209,7 +209,7 @@ var
   slist1,slist2,slist3: TStringList;
   str1,str2, str3: string;
   v1: RealType;
-  i,j, position: integer;
+  i,j: integer;
 begin
   // пример файла [[0 , 1 , 2 , 9];[0 , 5 , 8];[0 , 3]]
   // пустые строки, строки начинающиеся с $, части строк за // - отбрасываем

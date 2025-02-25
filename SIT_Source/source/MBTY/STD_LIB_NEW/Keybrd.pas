@@ -282,7 +282,7 @@ end;
 function TUserKeybrd.InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;
 var
   slist1: TStringList;
-  i,j: Integer;
+  i: Integer;
   str1: string;
 begin
   Result := r_Success;
@@ -351,7 +351,7 @@ begin
     f_InitState: // читаем-очищаем буфер windows при начале работы
       begin
         for i:=0 to keyCodesArray.Count-1 do begin
-          keyResult := GetAsyncKeyState(Integer(keyCodesArray[i]));
+          GetAsyncKeyState(Integer(keyCodesArray[i]));
           end;
       end;
 
