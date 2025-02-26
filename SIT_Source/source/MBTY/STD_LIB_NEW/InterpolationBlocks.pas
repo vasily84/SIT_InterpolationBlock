@@ -22,7 +22,7 @@ interface
 
 uses {$IFNDEF FPC}Windows,{$ENDIF}
      Classes, MBTYArrays, DataTypes, DataObjts, SysUtils, abstract_im_interface, RunObjts, Math, LinFuncs,
-     tbls, Data_blocks, InterpolFuncs, mbty_std_consts, uExtMath, InterpolationBlocks_unit,InterpolationBlocks_unit_tests;
+     tbls, Data_blocks, InterpolFuncs, mbty_std_consts, uExtMath;
 
 
 type
@@ -30,7 +30,6 @@ type
 // блок интерполяции по ТЗ от 3 февраля 2025, от одномерного аргумента
   TInterpolationBlock1 = class(TRunObject)
   protected
-    Func: TFndimFunctionByPoints1d; // хранилище наших точек функции
     // ПЕРЕЧИСЛЕНИЕ откуда берем входные данные
     // 0- ввести вручную 1-аргумент и ф-я в разных файлах
     // 2- аргумент и функция в одном файле 3- через порты
@@ -48,9 +47,12 @@ type
     InterpolationType,
     LagrangeOrder,  // порядок интерполяции для метода Лагранжа
     Npoints, // число точек функции
+    prop_Npoints,
     M_LagrangeShift,
 
     Fdim: NativeInt; // размерность выходного вектора функции
+    prop_Fdim: NativeInt;
+
     prop_IsNaturalSpline: Boolean;
     SplineArr: TExtArray2;
 
@@ -62,9 +64,6 @@ type
 
     x_stamp: TExtArray2; // Массивы изходных данных - реально применяются только для
     y_stamp: TExtArray2; // отслеживания изменения входных данных
-
-    py: PExtArr; // указатели на значения и аргументы интерполируемых функции.
-    px: PExtArr; // изменяются в LoadFunction
 
     function LoadFuncFromProperties(): Boolean;
     function LoadFuncFromFilesXiFi(): Boolean;
@@ -92,7 +91,6 @@ begin
   IsLinearBlock:=True;
   property_Xi_array := TExtArray.Create(1); // точки аргументов Xi функции, если она задана через свойства объекта
   property_Fi_array:= TExtArray.Create(1); // точки значений Fi функции, если она задана через свойства объекта
-  Func := TFndimFunctionByPoints1d.Create;
 
   SplineArr := TExtArray2.Create(1,1);
   x_stamp := TExtArray2.Create(1,1);
@@ -100,14 +98,14 @@ begin
 
   Xi_array := TExtArray.Create(1); // точки аргументов Xi функции, если она считана из файла
   Fi_array := TExtArray.Create(1);
+  prop_IsNaturalSpline := True;
 end;
 
 destructor  TInterpolationBlock1.Destroy;
 begin
   FreeAndNil(property_Xi_array);
   FreeAndNil(property_Fi_array);
-  FreeAndNil(Func);
-
+  
   FreeAndNil(SplineArr);
   FreeAndNil(x_stamp);
   FreeAndNil(y_stamp);
@@ -130,72 +128,78 @@ begin
     Result:=NativeInt(@InputsMode);
     DataType:=dtInteger;
     exit;
-  end;
+    end;
 
   // размерность выходного вектора функции
   if StrEqu(ParamName,'Fdim') then begin
-    Result:=NativeInt(@Fdim);
+    Result:=NativeInt(@prop_Fdim);
     DataType:=dtInteger;
     exit;
-  end;
+    end;
 
   // число заданных точек функции
   if StrEqu(ParamName,'Npoints') then begin
-    Result:=NativeInt(@Npoints);
+    Result:=NativeInt(@prop_Npoints);
     DataType:=dtInteger;
     exit;
-  end;
+    end;
 
   // тип интерполяции - кусочно-постоянная, линейная, Лагранжа и т.п.
   if StrEqu(ParamName,'InterpolationType') then begin
     Result:=NativeInt(@InterpolationType);
     DataType:=dtInteger;
     exit;
-  end;
+    end;
 
   // тип экстраполяции за пределами определения функции - константа, кусочно-постоянная и т.д.
   if StrEqu(ParamName,'ExtrapolationType') then begin
     Result:=NativeInt(@ExtrapolationType);
     DataType:=dtInteger;
     exit;
-  end;
+    end;
 
   // порядок интерполяции для метода Лагранжа
   if StrEqu(ParamName,'LagrangeOrder') then begin
     Result:=NativeInt(@LagrangeOrder);
     DataType:=dtInteger;
     exit;
-  end;
+    end;
 
   if StrEqu(ParamName,'FileName') then begin
     Result:=NativeInt(@FileName);
     DataType:=dtString;
     exit;
-  end;
+    end;
 
   if StrEqu(ParamName,'Xi_array') then begin
     Result:=NativeInt(property_Xi_array);
     DataType:=dtDoubleArray;
     exit;
-  end;
+    end;
 
   if StrEqu(ParamName,'Fi_array') then begin
     Result:=NativeInt(property_Fi_array);
     DataType:=dtDoubleArray;
     exit;
-  end;
+    end;
 
   if StrEqu(ParamName,'FileNameArgsX') then begin
     Result:=NativeInt(@FileNameArgsX);
     DataType:=dtString;
     exit;
-  end;
+    end;
 
   if StrEqu(ParamName,'FileNameFuncTable') then begin
     Result:=NativeInt(@FileNameFuncTable);
     DataType:=dtString;
     exit;
-  end;
+    end;
+
+  if StrEqu(ParamName,'IsNaturalSpline') then begin
+    Result:=NativeInt(@prop_IsNaturalSpline);
+    DataType:=dtBool;
+    exit;
+    end;
 
   ErrorEvent('параметр '+ParamName+'В блоке MyInterpolationBlock1 не найден', msWarning, VisualObject);
 end;
@@ -243,9 +247,6 @@ begin
     exit;
     end;
 
-  // устанавливаем указатели на свойства
-  px := property_Xi_array.Arr;
-  py := property_Fi_array.Arr;
 end;
 //---------------------------------------------------------------------------
 
@@ -281,13 +282,18 @@ begin
     end;
 
   if Fdim <> (1+tableF.FunsCount) then begin
-    ErrorEvent('Размерность функции из файла = '+IntToStr((1+tableF.FunsCount))+' и свойства Fdim= '+IntToStr(Fdim)+' не совпадает',msError,VisualObject);
-    Result := False;
-    goto OnExit;
+    ErrorEvent('Размерность функции из файла = '+IntToStr((1+tableF.FunsCount))+' и свойства Fdim= '+IntToStr(Fdim)+' не совпадает, используем размености из файла',msWarning,VisualObject);
+    //Result := False;
+    //goto OnExit;
     end;
 
   Xi_array.ChangeCount(tableX.px.count);
   Fi_array.ChangeCount(tableF.px.count*(tableF.FunsCount+1));
+
+  // размерности устанавливаем из файла
+  //Npoints := tableF.px.count*(tableF.FunsCount+1);
+  Npoints := tableF.px.count;
+  Fdim := tableF.FunsCount+1;
 
   // идем по входному вектору и добавляем точки в функцию.
   yy := 0;
@@ -297,12 +303,10 @@ begin
     // TODO переделать - дурацкий метод, но работает
     Fi_array[yy] := tableF.px[i]; // первая точка - из первого столбца аргументов
     inc(yy);
-    for j:=0 to tableF.FunsCount-1 do begin // остаьные точки - из ветора значений
+    for j:=0 to tableF.FunsCount-1 do begin // остальные точки - из вектора значений
       Fi_array[yy] := tableF.py.Arr[j][i];
       inc(yy);
       end;
-
-    Func.addPoint(Xp,PDouble(Func.Fval1));
     end;
 
 OnExit:
@@ -328,17 +332,13 @@ begin
     goto OnExit;
     end;
 
-  if (Fdim <> table1.FunsCount) then begin
-    ErrorEvent('Размерность функции из файла = '+IntToStr((table1.FunsCount))+' и свойства Fdim= '+IntToStr(Fdim)+' не совпадает',msError,VisualObject);
-    Result := False;
-    goto OnExit;
-    end;
-
-  Func.ClearPoints();
-  Func.beginPoints;
-
   Xi_array.ChangeCount(table1.px.count);
   Fi_array.ChangeCount(table1.px.count*table1.FunsCount);
+
+  // размерности устанавливаем из файла
+  //Npoints := table1.px.count*table1.FunsCount;
+  Npoints := table1.px.count;
+  Fdim := table1.FunsCount;
 
   yy:=0;
   for i:=0 to table1.px.count-1 do begin // идем по входному вектору и добавляем точки в функцию.
@@ -350,9 +350,6 @@ begin
       end;
     end;
 
-  // устанавливаем указатели на свойства
-  px := Xi_array.Arr;
-  py := Fi_array.Arr;
 OnExit:
   FreeAndNil(table1);
 end;
@@ -381,9 +378,6 @@ begin
     exit;
     end;
 
-  // устанавливаем указатели на порты
-  px := U[1].Arr;
-  py := U[2].Arr;
 end;
 
 //---------------------------------------------------------------------------
@@ -403,7 +397,7 @@ begin
       ErrorEvent('Метод задания функции '+IntToStr(InputsMode)+' не реализован',msError,VisualObject);
     end;
   end;
-
+  {
   // проверяем, упорядочены ли точки. При необходимости - упорядочиваем
   if not Func.IsXsorted then begin
     Func.sortPoints;
@@ -419,107 +413,36 @@ begin
   if (InterpolationType = 3) and (LagrangeOrder > Func.pointsCount) then begin
     ErrorEvent('порядок метода Лагранжа больше заданного числа точек, применим порядок = '+IntToStr(Func.pointsCount), msWarning, VisualObject );
     end;
+  }
 
 end;
 
-{
-function   TInterpolationBlock1.RunFunc(var at,h : RealType; Action:Integer):NativeInt;
-var
-    j,k : Integer;
-    Xarg: Double;
-begin
-  Result := r_Success;
-
-  case Action of
-    f_InitState:
-              begin
-                //------------------------------------------------------------
-                // 1. инициализируем наш набор точек ЗАНОВО
-                if not LoadFunc() then begin
-                  Result := r_Fail;
-                  exit;
-                  end;
-
-                Func.ExtrapolationType := ExtrapolationType;
-                Func.LagrangeOrder := LagrangeOrder;
-
-                if Func.LagrangeOrder>Func.pointsCount then begin
-                  Func.LagrangeOrder := Func.pointsCount;
-                  end;
-
-              end;
-
-    f_RestoreOuts,
-    f_UpdateJacoby,
-    f_UpdateOuts,
-    f_GoodStep:
-              begin
-                ///////////////////////////////////////////////////////////////
-                // порядок действий -
-                // 1.Считаем, что все успешно инициализированно в f_InitState
-                // 2. определяем из входа аргумент X
-                // 3. делаем необходимый вызов интерполяции
-                // 4. формируем и возвращаем вектор-ответ
-
-                //------------------------------------------------------------
-                // 1. - TODO - Считаем, что все успешно инициализированно в f_InitState
-                // 2. определяем из входа аргумент X
-                for k:=0 to U[0].Count-1 do begin
-                  Xarg := U[0][k];
-
-                  // 3. делаем необходимый вызов интерполяции
-                  case InterpolationType of
-                    0:
-                      begin
-                        Func.IntervalInterpolation(Xarg, PDouble(Func.Fval1));
-                      end;
-                    1:
-                      begin
-                        Func.LinearInterpolation(Xarg, PDouble(Func.Fval1));
-                      end;
-                    2:
-                      begin
-                        Func.SplineInterpolation(Xarg, PDouble(Func.Fval1));
-                      end;
-                    3:
-                      begin
-                        Func.LagrangeInterpolation(Xarg, PDouble(Func.Fval1));
-                      end;
-
-                    else
-                      begin
-                        ErrorEvent('Метод интерполяции функции '+IntToStr(InterpolationType)+' не реализован',msError,VisualObject);
-                        Result := r_Fail;
-                        exit;
-                      end;
-                  end;
-
-                  // 4. формируем и возвращаем вектор-ответ
-                  for j:=0 to Fdim-1 do begin
-                    Y[0][k*Fdim+j] :=  Func.Fval1[j];
-                    end;
-
-                end;
-
-                EXIT;   // работа выполнена!!!
-
-                ///////////////////////////////////////////////////////////
-              end;
-  end;
-end;
-
-}
 //===========================================================================
 function    TInterpolationBlock1.InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;
 begin
   Result := r_Success;
+  Fdim := prop_Fdim;
+  NPoints := prop_Npoints;
 
+  // TODO как переделать, чтобы знать актуальные размерности функции из файлов?
   case Action of
-    i_GetCount:  begin
-                   cU[1].Dim:=SetDim([Npoints]);
-                   cU[2].Dim:=SetDim([Npoints*Fdim]);
-                   cY[0].Dim:=SetDim([GetFullDim(cU[0].Dim)*Fdim]);
-                 end;
+    {
+    i_GetPropErr:
+      begin
+      ;
+      end;
+
+    i_GetInit:
+      begin
+      ;
+      end;
+    }
+    i_GetCount:
+      begin
+      cU[1].Dim:=SetDim([Npoints]);
+      cU[2].Dim:=SetDim([Npoints*Fdim]);
+      cY[0].Dim:=SetDim([GetFullDim(cU[0].Dim)*Fdim]);
+      end;
   else
     Result:=inherited InfoFunc(Action,aParameter);
   end;
@@ -529,7 +452,87 @@ end;
 function   TInterpolationBlock1.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
 var
   i,j,c   : Integer;
+  py: PExtArr; // указатели на значения и аргументы интерполируемых функции.
+  px: PExtArr; // изменяются в SetPxPy
+  Yvalue: RealType;
 
+function checkX_range(x: RealType; var AYvalue: RealType):Boolean;
+// проверить, что аргумент х находится внутри диапазона определения функции.
+// возвращает - True - аргумент х находится внутри диапазона и экстраполяция не требуется.
+// иначе - False, и изменяет AYValue на значение экстраполяции
+begin
+
+  if ExtrapolationType=2 then begin // экстраполировать границы для заданного метода
+    Result := True;
+    exit;
+    end;
+
+  if x<px[0] then begin
+    case ExtrapolationType of
+      0: // константа вне диапазона
+        begin
+          Result := False;
+          AYvalue := py[0]; // берем первое значение из таблицы значений
+          exit;
+        end;
+
+      1: // ноль вне диапазона
+        begin
+          Result := False;
+          AYvalue := 0;
+          exit;
+        end;
+      end;
+    end;
+
+  if x>px[Npoints-1] then begin
+    case ExtrapolationType of
+      0: // константа вне диапазона
+        begin
+          Result := False;
+          AYvalue := py[Npoints-1]; // берем последнее значение из таблицы значений
+          exit;
+        end;
+
+      1: // ноль вне диапазона
+        begin
+          Result := False;
+          AYvalue := 0;
+          exit;
+        end;
+      end;
+    end;
+  Result := True;
+end;
+//---------------------------------------------------------------------------
+procedure SetPxPy;
+// устанавливаем указатели px py на начало актуальных данных
+begin
+  case InputsMode of
+    0: // из свойств
+      begin
+        // устанавливаем указатели на свойства
+        px := property_Xi_array.Arr;
+        py := property_Fi_array.Arr;
+      end;
+
+    1,2: // из файлов в разных вариантах
+      begin
+          // устанавливаем указатели на считанные данные
+          px := Xi_array.Arr;
+          py := Fi_array.Arr;
+      end;
+
+    3: // из портов
+      begin
+        // U[1] - агрументы, U[2] - таблица значений
+        px := U[1].Arr;
+        py := U[2].Arr;
+      end;
+  end;
+
+end;
+//------------------------------------------------------------------------
 function  IsNewData:boolean;
 // входной вектор был изменен?
 // Это Признак для пересчета внутренних матриц функций интерполяции
@@ -537,14 +540,16 @@ var
   j: integer;
 begin
   Result := False;
-  for j:=0 to Npoints - 1 do // идем по данным порта, если видим неравенство - данные новые.
+  for j:=0 to Npoints - 1 do // идем по данным, если видим неравенство - данные новые.
     if (x_stamp[i].Arr^[j] <> px[j]) or (y_stamp[i].Arr^[j] <> py[j]) then begin
       x_stamp[i].Arr^[j] := px[j];
       y_stamp[i].Arr^[j] := py[j];
       Result:=True;
       end;
 end;
-// начало RunFunc
+// начало RunFunc ----------------------------------------------------------
+var
+  nXindex: NativeInt;
 begin
   Result := r_Success;
 
@@ -573,68 +578,102 @@ begin
     f_GoodStep:
       begin
         // U[0] - args - значение аргумента X
-        // U[1] - args_arr - массив заданных значений аргумента
-        // U[2] - func_table - матрица значений функции
-
         c := 0;
-        if InputsMode=3 then begin // задания функции через порты, считываем снова
-          //LoadFuncFromPorts(); // то же самое, только с проверками
-          // устанавливаем указатели на порты
-          px := U[1].Arr;
-          py := U[2].Arr;
-          end;
+        SetPxPy(); // устанавливаем указатели на начало данных
 
         for i:=0 to Fdim - 1 do begin
          case InterpolationType of
-         //0:Кусочно-постоянная 1:Линейная 2:Сплайн Кубический 3: Лагранж
-
-           3: begin // Лагранж
+           3:   // Лагранж
+              begin
+                // TODO обсудить Лагранж!!
                 for j:=0 to U[0].Count - 1 do begin
                   // function Lagrange(var X1,Y1 :array of RealType;X:RealType;N,M:Integer):RealType;
                   // X1 - МАССИВ ЗНАЧЕНИЙ АРГУМЕНТА, Y1 - МАССИВ ЗНАЧЕНИЙ ФУНКЦИИ,
                   // X - АРГУМЕНТ, N - ПОРЯДОК ПОЛИНОМА, M - HOMEP ЭЛЕМЕНТА, C KOTOPOГO НЕОБХОДИМО НАЧАТЬ ИНТЕРПОЛЯЦИЮ
+                  if checkX_range(U[0].Arr^[j],Yvalue) then begin
 
-                  Y[0].arr^[i*U[0].Count+j] := Lagrange(px^,py^,U[0].arr^[j],LagrangeOrder,M_LagrangeShift);
+                      nXindex := NPoints-1;
+                      // смещение для вычисления полинома Л считаем по интервалу нахождения аргумента Х
+                      Find1(U[0].Arr^[j],px,NPoints,nXindex);
+                      M_LagrangeShift := nXindex;
+
+                      // полином по точкам функции, не выходя за ее пределы
+                      // подробности см. реализации Lagrange
+                      if(M_LagrangeShift+LagrangeOrder)>=(Npoints-1) then begin
+                        M_LagrangeShift:= Npoints-1- LagrangeOrder;
+                        end;
+
+                      if (M_LagrangeShift<1) then M_LagrangeShift:=1;
+
+                      Y[0].arr^[i*U[0].Count+j] := Lagrange(px^,py^,U[0].arr^[j],LagrangeOrder,M_LagrangeShift);
+                    end else begin
+                      Y[0].arr^[i*U[0].Count+j] := Yvalue;
+                    end;
+
                   inc(c);
                   end;
               end;
 
-           2: begin //Вычисление натурального кубического сплайна
+           2:   //Вычисление натурального кубического сплайна
+              begin
                 if IsNewData or (Action = f_InitState) then begin
                   NaturalSplineCalc(px, py, SplineArr.Arr, Npoints, prop_IsNaturalSpline );
                   end;
 
                 for j:=0 to U[0].Count-1 do begin
-                  Y[0].arr^[c] := Interpol(U[0].Arr^[j], SplineArr.Arr, 5, LastInd[j] );
+
+                  if checkX_range(U[0].Arr^[j],Yvalue) then begin
+                      Y[0].arr^[c] := Interpol(U[0].Arr^[j], SplineArr.Arr, 5, LastInd[j] );
+                    end else begin
+                      Y[0].arr^[c] := Yvalue;
+                    end;
+
                   inc(c);
                   end;
               end;
 
-           1: begin // Линейная интерполяция
+           1:   // Линейная интерполяция
+              begin
                 if IsNewData or (Action = f_InitState) then begin
                   LInterpCalc(px, py, SplineArr.Arr, Npoints );
                   end;
 
                 for j:=0 to U[0].Count-1 do begin
-                  Y[0].arr^[c] := Interpol(U[0].Arr^[j], SplineArr.Arr, 3, LastInd[j] );
+                  if checkX_range(U[0].Arr^[j],Yvalue) then begin
+                      Y[0].arr^[c] := Interpol(U[0].Arr^[j], SplineArr.Arr, 3, LastInd[j]);
+                    end else begin
+                      Y[0].arr^[c] := Yvalue;
+                    end;
+
                   inc(c);
                   end;
               end;
-           else
-              begin // Линейная интерполяция
-                  if IsNewData or (Action = f_InitState) then begin
-                    LInterpCalc(px, py, SplineArr.Arr, Npoints );
-                    end;
 
+           0:     // кусочная интерполяция.
+              begin
                   for j:=0 to U[0].Count-1 do begin
-                    Y[0].arr^[c] := Interpol(U[0].Arr^[j], SplineArr.Arr, 3, LastInd[j] );
+                    if checkX_range(U[0].Arr^[j],Yvalue) then begin
+                        // находим интервал значений для интерполяции
+                        nXindex := NPoints-1;
+                        Find1(U[0].Arr^[j],px,NPoints,nXindex);
+                        Y[0].arr^[c] := py[nXindex];
+                      end else begin
+                        Y[0].arr^[c] := Yvalue;
+                      end;
+
                     inc(c);
                     end;
                 end;
+           else
+              begin
+                ErrorEvent('метод интерполяции "'+IntToStr(InterpolationType)+'" не реализован', msError, VisualObject );
+                Result := r_Fail;
+                exit;
+              end;
            end;
 
-         //TODO зачем??? ЭТО ничего не делает???
-         //py:=@py^[Npoints];
+         // двигаем указатель на данные следующей функции в наборе
+         py := @py^[Npoints];
         end
       end;
   end
