@@ -1151,8 +1151,6 @@
         <DCCReference Include="Vectors.pas"/>
         <DCCReference Include="uOptimizers.pas"/>
         <DCCReference Include="InterpolationBlocks.pas"/>
-        <DCCReference Include="InterpolationBlocks_unit.pas"/>
-        <DCCReference Include="InterpolationBlocks_unit_tests.pas"/>
         <DCCReference Include="Keybrd.pas"/>
         <DCCReference Include="NewNDInterpol.pas"/>
         <BuildConfiguration Include="Base">
