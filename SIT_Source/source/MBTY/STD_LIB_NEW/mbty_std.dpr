@@ -38,7 +38,8 @@ uses
   uOptimizers in 'uOptimizers.pas',
   InterpolationBlocks in 'InterpolationBlocks.pas',
   Keybrd in 'Keybrd.pas',
-  NewNDInterpol in 'NewNDInterpol.pas';
+  NewNDInterpol in 'NewNDInterpol.pas',
+  TExtArray_Utils in 'TExtArray_Utils.pas';
 
 {$R *.res}
 

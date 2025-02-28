@@ -22,7 +22,7 @@ interface
 
 uses {$IFNDEF FPC}Windows,{$ENDIF}
      Classes, MBTYArrays, DataTypes, DataObjts, SysUtils, abstract_im_interface, RunObjts, Math, LinFuncs,
-     tbls, Data_blocks, InterpolFuncs, mbty_std_consts, uExtMath;
+     tbls, Data_blocks, InterpolFuncs, mbty_std_consts, uExtMath,TExtArray_Utils;
 
 
 type
@@ -35,21 +35,22 @@ type
     // 2- аргумент и функция в одном файле 3- через порты
     InputMode: NativeInt;
     ExtrapolationType: NativeInt;   // ПЕРЕЧИСЛЕНИЕ тип экстраполяции за пределами определения функции - константа,ноль, интерполяция по крайним точкам
-    FileName: string; // имя единого входного файла
-    FileNameArgsX: string; // имя входного файла для аргументов при раздельной загрузке
-    FileNameValsF: string; // имя входного файла для значений функции при раздельной загрузке
 
-    property_Xi_array: TExtArray; // точки аргументов Xi функции, если она задана через свойства объекта
-    property_Fi_array: TExtArray; // точки значений Fi функции, если она задана через свойства объекта
+    prop_Xi_arr: TExtArray; // точки аргументов Xi функции, если она задана через свойства объекта
+    prop_Fi_arr: TExtArray; // точки значений Fi функции, если она задана через свойства объекта
 
     //ПЕРЕЧИСЛЕНИЕ тип интерполяции
     //0:Кусочно-постоянная 1:Линейная 2:Сплайн Кубический 3: Лагранж
     InterpolationType,
     LagrangeOrder,  // порядок интерполяции для метода Лагранжа
     Npoints, // число точек функции
-    prop_Npoints,
+    prop_Npoints, // для задания числа точек через порты
     nport,
     Fdim: NativeInt; // размерность выходного вектора функции
+
+    FileName: string; // имя единого входного файла
+    FileNameArgsX: string; // имя входного файла для аргументов при раздельной загрузке
+    FileNameValsF: string; // имя входного файла для значений функции при раздельной загрузке
 
     prop_IsNaturalSpline: Boolean;
     SplineArr: TExtArray2;
@@ -57,20 +58,19 @@ type
     // последний найденный интервал интерполяции при вызове функции Interpol
     LastInd: array of NativeInt;
 
-    Xi_array: TExtArray; // точки аргументов Xi функции, если она считана из файла
-    Fi_array: TExtArray; // точки значений Fi функции, если она считана из файла
+    Xi_data: TExtArray; // точки аргументов Xi функции, если она считана из файла
+    Fi_data: TExtArray; // точки значений Fi функции, если она считана из файла
 
     x_stamp: TExtArray2; // Массивы изходных данных - реально применяются только для
     y_stamp: TExtArray2; // отслеживания изменения входных данных
 
+    function LoadFunc(): Boolean; // загрузить данные интерполируемой функции
     function LoadFuncFromProperties(): Boolean;
     function LoadFuncFromFilesXiFi(): Boolean;
     function LoadFuncFromFile(): Boolean;
     function LoadFuncFromPorts(): Boolean;
-    function LoadFunc(): Boolean;
 
-    // установить актуальное число точек функции исходя из режима inputMode
-    function init_Npoints():Boolean;
+    function CheckInputsU(): Boolean; // проверить корректность входных портов
 
   public
     function       InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
@@ -92,7 +92,7 @@ const
   txtFiXiDimError = 'Число значений Fi и аргументов Xi входной функции не совпадает';
   txtFileError1 = 'Файл ';
   txtFileError2 = ' невозможно считать';
-  txtPortsNot3 = 'Число входных портов не равно 3';
+  txtPortsNot3 = 'Число входных портов не равно 3'; // переделать с названиями входных портов
 
   txtInputModeErr1 = 'Метод задания таблицы функции ';
   txtInputModeErr2 = ' не реализован';
@@ -125,40 +125,40 @@ const
 {$ENDIF}
 
 //===========================================================================
+
 constructor TInterpolationBlock1.Create;
 begin
   inherited;
   // TODO
   IsLinearBlock:=True;
 
-  property_Xi_array := TExtArray.Create(1); // точки аргументов Xi функции, если она задана через свойства объекта
-  property_Fi_array:= TExtArray.Create(1); // точки значений Fi функции, если она задана через свойства объекта
+  prop_Xi_arr := TExtArray.Create(1); // точки аргументов Xi функции, если она задана через свойства объекта
+  prop_Fi_arr:= TExtArray.Create(1); // точки значений Fi функции, если она задана через свойства объекта
 
   SplineArr := TExtArray2.Create(1,1);
   x_stamp := TExtArray2.Create(1,1);
   y_stamp := TExtArray2.Create(1,1);
 
-  Xi_array := TExtArray.Create(1); // точки аргументов Xi функции, если она считана из файла
-  Fi_array := TExtArray.Create(1);
+  Xi_data := TExtArray.Create(1); // точки аргументов Xi функции, если она считана из файла
+  Fi_data := TExtArray.Create(1);
 end;
 //----------------------------------------------------------------------------
 destructor  TInterpolationBlock1.Destroy;
 begin
-  FreeAndNil(property_Xi_array);
-  FreeAndNil(property_Fi_array);
+  FreeAndNil(prop_Xi_arr);
+  FreeAndNil(prop_Fi_arr);
 
   FreeAndNil(SplineArr);
   FreeAndNil(x_stamp);
   FreeAndNil(y_stamp);
 
-  FreeAndNil(Xi_array);
-  FreeAndNil(Fi_array);
+  FreeAndNil(Xi_data);
+  FreeAndNil(Fi_data);
 
   if Assigned(LastInd) then SetLength(LastInd,0);
 
   inherited;
 end;
-
 //---------------------------------------------------------------------------
 function    TInterpolationBlock1.GetParamID;
 begin
@@ -222,13 +222,13 @@ begin
     end;
 
   if StrEqu(ParamName,'Xi_array') then begin
-    Result:=NativeInt(property_Xi_array);
+    Result:=NativeInt(prop_Xi_arr);
     DataType:=dtDoubleArray;
     exit;
     end;
 
   if StrEqu(ParamName,'Fi_array') then begin
-    Result:=NativeInt(property_Fi_array);
+    Result:=NativeInt(prop_Fi_arr);
     DataType:=dtDoubleArray;
     exit;
     end;
@@ -260,12 +260,15 @@ function TInterpolationBlock1.LoadFuncFromProperties(): Boolean;
 begin
   Result := True;
 
-  if property_Fi_array.Count<>Fdim*property_Xi_array.Count then begin //проверка корректности входных размеров
+  if prop_Fi_arr.Count<>Fdim*prop_Xi_arr.Count then begin //проверка корректности входных размеров
     ErrorEvent(txtFiXiDimError, msError, VisualObject);
     Result := False;
     exit;
     end;
 
+  // копируем
+  TExtArray_cpy(Xi_data, prop_Xi_arr);
+  TExtArray_cpy(Fi_data, prop_Fi_arr);
 end;
 //---------------------------------------------------------------------------
 
@@ -304,21 +307,22 @@ begin
     goto OnExit;
     end;
 
-  Xi_array.ChangeCount(tableX.px.count);
-  Fi_array.ChangeCount(tableF.px.count*(tableF.FunsCount+1));
+  Xi_data.ChangeCount(tableX.px.count);
+  Fi_data.ChangeCount(tableF.px.count*(tableF.FunsCount+1));
 
-  Npoints := Xi_array.Count;
+  // размерность из файла
+  Npoints := Xi_data.Count;
 
   // идем по входному вектору и добавляем точки в функцию.
   yy := 0;
   for i:=0 to tableX.px.count-1 do begin
-    Xi_array[i] := tableX.px[i];
+    Xi_data[i] := tableX.px[i];
 
     // TODO переделать - дурацкий метод, но работает
-    Fi_array[yy] := tableF.px[i]; // первая точка - из первого столбца аргументов
+    Fi_data[yy] := tableF.px[i]; // первая точка - из первого столбца аргументов
     inc(yy);
     for j:=0 to tableF.FunsCount-1 do begin // остальные точки - из вектора значений
-      Fi_array[yy] := tableF.py.Arr[j][i];
+      Fi_data[yy] := tableF.py.Arr[j][i];
       inc(yy);
       end;
     end;
@@ -351,18 +355,18 @@ begin
     goto OnExit;
     end;
 
-  Xi_array.ChangeCount(table1.px.count);
-  Fi_array.ChangeCount(table1.px.count*table1.FunsCount);
+  Xi_data.ChangeCount(table1.px.count);
+  Fi_data.ChangeCount(table1.px.count*table1.FunsCount);
 
   // размерности устанавливаем из файла
   Npoints := table1.px.count;
 
   yy:=0;
   for i:=0 to table1.px.count-1 do begin // идем по входному вектору и добавляем точки в функцию.
-    Xi_array[i] := table1.px[i];
+    Xi_data[i] := table1.px[i];
 
     for j:=0 to table1.FunsCount-1 do begin
-      Fi_array[yy] := table1.py.Arr[j][i];
+      Fi_data[yy] := table1.py.Arr[j][i];
       inc(yy);
       end;
     end;
@@ -372,29 +376,46 @@ OnExit:
 end;
 
 //============================================================================
-function TInterpolationBlock1.LoadFuncFromPorts(): Boolean;
-var
-  i:Integer;
+// проверить корректность входных портов
+function TInterpolationBlock1.CheckInputsU(): Boolean;
 begin
   Result := True;
-  // 0. проверяем размерности входных портов -
-  // U[0] - args - значение аргумента X
-  // U[1] - args_arr - массив заданных значений аргумента
-  // U[2] - func_table - матрица значений функции
-  //--------------------------------------------------------
-  {
-  if Length(U)<>3 then begin
-    ErrorEvent(txtPortsNot3, msError, VisualObject);
-    Result := False;
-    exit;
-    end;
 
-  if U[2].Count<>Fdim*U[1].Count then begin //проверка корректности входных размеров
-    ErrorEvent(txtFiXiDimError, msError, VisualObject );
-    Result := False;
-    exit;
+  case InputMode of
+    3: // из портов
+    begin
+      // 0. проверяем размерности входных портов -
+      // U[0] - args - значение аргумента X
+      // U[1] - args_arr - массив заданных значений аргумента
+      // U[2] - func_table - матрица значений функции
+      //--------------------------------------------------------
+
+      if Length(U)<>3 then begin
+        ErrorEvent(txtPortsNot3, msError, VisualObject);
+        Result := False;
+        exit;
+        end;
+
+      if U[2].Count<>Fdim*U[1].Count then begin //проверка корректности входных размеров
+        ErrorEvent(txtFiXiDimError, msError, VisualObject );
+        Result := False;
+        exit;
+        end;
     end;
-  }
+    else // должен быть задан один входной порт
+      begin
+      if Length(U)<>1 then begin
+        ErrorEvent('должен быть задан 1 входной порт', msError, VisualObject);
+        Result := False;
+        exit;
+        end;
+      end;
+  end;
+end;
+
+function TInterpolationBlock1.LoadFuncFromPorts(): Boolean;
+begin
+  Result := True;
 end;
 
 //---------------------------------------------------------------------------
@@ -415,43 +436,18 @@ begin
     end;
   end;
 
+  if InputMode = 3 then Exit; // ниже проверки только для  0..2
   //TODO !! Важно!!
   // проверяем, упорядочены ли точки. При необходимости - упорядочиваем
   // проверяем, есть ли в аргументах Х дубликаты
-  // ПРОВЕРИТЬ - РАБОТАЮТ ЛИ НАШИ ФУНКЦИИ ИНТЕРПОЛЯЦИИ НА НЕРЕГУЛЯРНОЙ СЕТКЕ.
-  //
-  // порядок Лагранжа
-end;
+  if not TExtArray_IsOrdered(Xi_data) then begin
+    Assert(False,'не упорядочен Х');
+    TExtArray_Sort_XY_Arr(Xi_data, Fi_data, Npoints, Fdim);
+    end;
 
-//---------------------------------------------------------------------------
-// установить актуальное число точек функции исходя из режима inputMode
-function TInterpolationBlock1.init_Npoints():Boolean;
-begin
-  Result := True;
-
-  case InputMode of
-    0: // из свойств
-      begin
-        NPoints := property_Xi_array.Count;
-        exit;
-      end;
-
-    1,2:
-      begin // загружаем из файлов - данные должны быть уже загружены
-        NPoints := Xi_array.Count;
-      end;
-
-    3: // из портов
-      begin
-        NPoints := prop_Npoints;
-        exit;
-      end;
-
-    else begin
-      Result := False;
-      ErrorEvent(txtInputModeErr1+IntToStr(InputMode)+txtInputModeErr2,msError,VisualObject);
-      end;
-  end;
+  if TExtArray_HasDuplicates(Xi_data) then begin
+    Assert(False,'есть дубликаты Х');
+    end;
 
 end;
 
@@ -460,8 +456,8 @@ function    TInterpolationBlock1.InfoFunc(Action: integer;aParameter: NativeInt)
 begin
   Result := r_Success;
 
-  case Action of
-    i_GetPropErr:
+  case Action of  {
+    i_GetPropErr: //Проверка правильности задания параметров блока (перед сортировкой)
       begin
         // TODO - добавить буфуризацию, чтобы читалось только 1 раз
         if not LoadFunc() then begin
@@ -470,16 +466,24 @@ begin
           end;
       end;
 
-    i_GetInit:
+    i_GetInit: //Получить флаг зависимости выходов от входов
       begin
       if not init_NPoints() then begin
         Result := r_Fail;
         exit;
         end;
       end;
+      }
 
-    i_GetCount:
+    i_GetCount: //Получить размерности входов\выходов
       begin
+
+        if not LoadFunc() then begin // там необходимая информация о NPoints
+          Result := r_Fail;
+          exit;
+          end;
+
+
 
         if InputMode=3 then begin // для случая задания функции через порты
           cU[1].Dim:=SetDim([Npoints]);
@@ -589,15 +593,15 @@ begin
     0: // из свойств
       begin
         // устанавливаем указатели на свойства
-        px := property_Xi_array.Arr;
-        py := property_Fi_array.Arr;
+        px := prop_Xi_arr.Arr;
+        py := prop_Fi_arr.Arr;
       end;
 
     1,2: // из файлов в разных вариантах
       begin
           // устанавливаем указатели на считанные данные
-          px := Xi_array.Arr;
-          py := Fi_array.Arr;
+          px := Xi_data.Arr;
+          py := Fi_data.Arr;
       end;
 
     3: // из портов
@@ -634,22 +638,21 @@ begin
   case Action of
     f_InitObjects:
       begin
-        //Здесь устанавливаем нужные размерности вспомогательных таблиц и переменных
-        SetLength(LastInd,GetFullDim(cU[2].Dim));
-        ZeroMemory(Pointer(LastInd), GetFullDim(cU[2].Dim)*SizeOf(NativeInt));
-        SplineArr.ChangeCount(5, Npoints);
-        x_stamp.ChangeCount(Fdim, Npoints);
-        y_stamp.ChangeCount(Fdim, Npoints);
-
         // загружаем таблицу функции из заданного источника
         if not LoadFunc() then begin
           Result := r_Fail;
           exit;
           end;
 
+        //Здесь устанавливаем нужные размерности вспомогательных таблиц и переменных
+        SetLength(LastInd,GetFullDim(cU[2].Dim));
+        ZeroMemory(Pointer(LastInd), GetFullDim(cU[2].Dim)*SizeOf(NativeInt));
+        SplineArr.ChangeCount(5, Npoints);
+        x_stamp.ChangeCount(Fdim, Npoints);
+        y_stamp.ChangeCount(Fdim, Npoints);
       end;
 
-    f_InitState,
+    f_InitState, //Запись начальных состояний
     f_RestoreOuts,
     f_UpdateJacoby,
     f_UpdateOuts,
@@ -731,7 +734,7 @@ begin
                 end;
            else
               begin
-                ErrorEvent(txtInterpolationTypeErr2+IntToStr(InterpolationType)+txtInterpolationTypeErr2, msError, VisualObject );
+                ErrorEvent(txtInterpolationTypeErr1+IntToStr(InterpolationType)+txtInterpolationTypeErr2, msError, VisualObject );
                 Result := r_Fail;
                 exit;
               end;
@@ -743,5 +746,10 @@ begin
       end;
   end
 end;
-////////////////////////////////////////////////////////////////////////////////
+
+/////////////////////////////////////////////////////////////////////////////
+// НИЖЕ ИДУТ ТЕСТЫ //////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+//---------------------------------------------------------------------------
+
 end.

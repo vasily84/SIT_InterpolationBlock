@@ -1153,6 +1153,7 @@
         <DCCReference Include="InterpolationBlocks.pas"/>
         <DCCReference Include="Keybrd.pas"/>
         <DCCReference Include="NewNDInterpol.pas"/>
+        <DCCReference Include="TExtArray_Utils.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
