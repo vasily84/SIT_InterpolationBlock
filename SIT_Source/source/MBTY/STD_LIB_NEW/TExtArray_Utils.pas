@@ -23,13 +23,14 @@ procedure TExtArray_Sort_XY_Arr(Xarr: TExtArray; Yarr: TExtArray; NPoints,Fdim: 
 function Load_TExtArray_FromBracketFile(FileName: string; var array1: TExtArray): Boolean;
 function Load_TExtArray2_FromBracketFile(FileName: string; var arrayVect: TExtArray2): Boolean;
 
-procedure TExtArray_cpy(ADst: TExtArray;const ASrc: TExtArray);
+procedure TExtArray_cpy(var ADst: TExtArray;const ASrc: TExtArray);
+procedure TExtArray2_cpy(var ADst: TExtArray2;const ASrc: TExtArray2);
 
 implementation
 
 uses RealArrays;
 //===========================================================================
-procedure TExtArray_cpy(ADst: TExtArray;const ASrc: TExtArray);
+procedure TExtArray_cpy(var ADst: TExtArray;const ASrc: TExtArray);
 // скопировать Asrc->ADst. может изменить память ADst
 var
   i: Integer;
@@ -41,6 +42,22 @@ begin
     end;
 end;
 //----------------------------------------------------------------------------
+procedure TExtArray2_cpy(var ADst: TExtArray2;const ASrc: TExtArray2);
+// скопировать Asrc->ADst. может изменить память ADst
+var
+  i,j: Integer;
+begin
+  // TODO - переделать на Move
+  ADst.ChangeCount(ASrc.CountX, ASrc.GetMaxCountY);
+  for i:=0 to ASrc.CountX-1 do begin
+    ADst[i].Count := ASrc[i].Count;
+    for j:=0 to ASrc[i].Count-1 do begin
+      ADst[i][j]:= ASrc[i][j];
+      end;
+    end;
+
+end;
+
 function TExtArray_IsOrdered(Arr: TExtArray): Boolean;
 // проверить, упорядочен ли массив
 var
