@@ -12,11 +12,9 @@ unit InterpolationBlocks;
  //                Блоки интерполяции
  //***************************************************************************//
 
- {
- создан на основе оригинальной библиотеки mbty_std
- реализация одномерной и двухмерной интерполяции, где исходные данные могут быть
- заданы в виде констант - векторов и матриц, и в виде внешних файлов.
- }
+ //создан на основе оригинальной библиотеки mbty_std
+ //реализация одномерной и двухмерной интерполяции, где исходные данные могут быть
+ //заданы в виде констант - векторов и матриц, и в виде внешних файлов.
 
 interface
 
@@ -45,7 +43,7 @@ type
     LagrangeOrder,  // порядок интерполяции для метода Лагранжа
     Npoints, // число точек функции
     prop_Npoints, // для задания числа точек через порты
-    nport,
+    nport, // свойство для изменения числа видимых портов
     Fdim: NativeInt; // размерность выходного вектора функции
 
     FileName: string; // имя единого входного файла
@@ -104,6 +102,9 @@ const
   txtFilesRowCountErr2 = ' содержат разное число строк';
   txtFilesWrongFdim1 = 'Размерность функции из файла и свойства Fdim ';
   txtFilesWrongFdim2 = ' не совпадает';
+  txtXiduplicates = 'таблица значений функции содержит дубликаты аргумента';
+  txtFuncTableReordered = 'таблица значений функции переупорядочена по возрастанию аргумента';
+  txtPortsNot1 = 'должен быть задан 1 входной порт';
 {$ELSE}
   txtParamUnknown1 = 'parameter "';
   txtParamUnknown2 = '" is undefined';
@@ -122,6 +123,9 @@ const
   txtFilesRowCountErr2 = ' is contain different numbers of rows';
   txtFilesWrongFdim1 = 'the dimension of the function from the file and the property Fdim';
   txtFilesWrongFdim2 = '  does not match';
+  txtXiduplicates = 'The table of function values contains duplicate arguments';
+  txtFuncTableReordered = 'the table of function values is reordered in ascending order of the argument';
+  txtPortsNot1 = 'must be set only 1 input port';
 {$ENDIF}
 
 //===========================================================================
@@ -160,7 +164,7 @@ begin
   inherited;
 end;
 //---------------------------------------------------------------------------
-function    TInterpolationBlock1.GetParamID;
+function    TInterpolationBlock1.GetParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;
 begin
   Result:=inherited GetParamID(ParamName,DataType,IsConst);
   if Result <> -1 then exit;
@@ -269,6 +273,7 @@ begin
   // копируем
   TExtArray_cpy(Xi_data, prop_Xi_arr);
   TExtArray_cpy(Fi_data, prop_Fi_arr);
+  NPoints := Xi_data.Count;
 end;
 //---------------------------------------------------------------------------
 
@@ -356,7 +361,7 @@ begin
     end;
 
   Xi_data.ChangeCount(table1.px.count);
-  Fi_data.ChangeCount(table1.px.count*table1.FunsCount);
+  Fi_data.ChangeCount(table1.px.count*Fdim);
 
   // размерности устанавливаем из файла
   Npoints := table1.px.count;
@@ -367,6 +372,7 @@ begin
 
     for j:=0 to table1.FunsCount-1 do begin
       Fi_data[yy] := table1.py.Arr[j][i];
+      //Fi_data[i+j*Npoints] := table1.py.Arr[j][i];
       inc(yy);
       end;
     end;
@@ -389,7 +395,7 @@ begin
       // U[1] - args_arr - массив заданных значений аргумента
       // U[2] - func_table - матрица значений функции
       //--------------------------------------------------------
-
+      //TODO - надо ли это вообще? SIT IDE сама проверяет размерности?
       if Length(U)<>3 then begin
         ErrorEvent(txtPortsNot3, msError, VisualObject);
         Result := False;
@@ -405,17 +411,18 @@ begin
     else // должен быть задан один входной порт
       begin
       if Length(U)<>1 then begin
-        ErrorEvent('должен быть задан 1 входной порт', msError, VisualObject);
+        ErrorEvent(txtPortsNot1, msError, VisualObject);
         Result := False;
         exit;
         end;
       end;
   end;
 end;
-
-function TInterpolationBlock1.LoadFuncFromPorts(): Boolean;
+//---------------------------------------------------------------------------
+function TInterpolationBlock1.LoadFuncFromPorts(): Boolean;  // stub
 begin
   Result := True;
+  Npoints := prop_Npoints;
 end;
 
 //---------------------------------------------------------------------------
@@ -436,17 +443,15 @@ begin
     end;
   end;
 
-  if InputMode = 3 then Exit; // ниже проверки только для  0..2
-  //TODO !! Важно!!
-  // проверяем, упорядочены ли точки. При необходимости - упорядочиваем
   // проверяем, есть ли в аргументах Х дубликаты
-  if not TExtArray_IsOrdered(Xi_data) then begin
-    Assert(False,'не упорядочен Х');
-    TExtArray_Sort_XY_Arr(Xi_data, Fi_data, Npoints, Fdim);
+  if TExtArray_HasDuplicates(Xi_data) then begin
+    ErrorEvent(txtXiduplicates, msWarning, VisualObject);
     end;
 
-  if TExtArray_HasDuplicates(Xi_data) then begin
-    Assert(False,'есть дубликаты Х');
+  // проверяем, упорядочены ли точки. При необходимости - упорядочиваем
+  if (InputMode < 3)and(TExtArray_IsOrdered(Xi_data)=False) then begin
+    ErrorEvent(txtFuncTableReordered, msWarning, VisualObject);
+    TExtArray_Sort_XY_Arr(Xi_data, Fi_data, Npoints, Fdim);
     end;
 
 end;
@@ -456,39 +461,25 @@ function    TInterpolationBlock1.InfoFunc(Action: integer;aParameter: NativeInt)
 begin
   Result := r_Success;
 
-  case Action of  {
-    i_GetPropErr: //Проверка правильности задания параметров блока (перед сортировкой)
-      begin
-        // TODO - добавить буфуризацию, чтобы читалось только 1 раз
-        if not LoadFunc() then begin
-          Result := r_Fail;
-          exit;
-          end;
-      end;
-
-    i_GetInit: //Получить флаг зависимости выходов от входов
-      begin
-      if not init_NPoints() then begin
-        Result := r_Fail;
-        exit;
-        end;
-      end;
-      }
+  case Action of
+    //i_GetPropErr: //Проверка правильности задания параметров блока (перед сортировкой)
+    //i_GetInit: //Получить флаг зависимости выходов от входов
 
     i_GetCount: //Получить размерности входов\выходов
       begin
 
-        if not LoadFunc() then begin // там необходимая информация о NPoints
+        if not LoadFunc() then begin // Загружаем, там необходимая информация о NPoints
           Result := r_Fail;
           exit;
           end;
 
-
+        //CheckInputsU();
 
         if InputMode=3 then begin // для случая задания функции через порты
           cU[1].Dim:=SetDim([Npoints]);
           cU[2].Dim:=SetDim([Npoints*Fdim]);
           end;
+
         // размерность выходного вектора всегда определена
         cY[0].Dim:=SetDim([GetFullDim(cU[0].Dim)*Fdim]);
       end;
@@ -542,7 +533,6 @@ function checkX_range(x: RealType; var AYvalue: RealType):Boolean;
 // возвращает - True - аргумент х находится внутри диапазона и экстраполяция не требуется.
 // иначе - False, и изменяет AYValue на значение экстраполяции
 begin
-
   if ExtrapolationType=2 then begin // экстраполировать границы для заданного метода
     Result := True;
     exit;
@@ -551,38 +541,27 @@ begin
   if x<px[0] then begin
     case ExtrapolationType of
       0: // константа вне диапазона
-        begin
-          Result := False;
-          AYvalue := py[0]; // берем первое значение из таблицы значений
-          exit;
-        end;
+          begin AYvalue := py[0]; end; // берем первое значение из таблицы значений
 
       1: // ноль вне диапазона
-        begin
-          Result := False;
-          AYvalue := 0;
-          exit;
-        end;
+          begin AYvalue := 0; end;
       end;
+    Result := False;
+    exit;
     end;
 
   if x>px[Npoints-1] then begin
     case ExtrapolationType of
       0: // константа вне диапазона
-        begin
-          Result := False;
-          AYvalue := py[Npoints-1]; // берем последнее значение из таблицы значений
-          exit;
-        end;
+          begin AYvalue := py[Npoints-1]; end; // берем последнее значение из таблицы значений
 
       1: // ноль вне диапазона
-        begin
-          Result := False;
-          AYvalue := 0;
-          exit;
-        end;
+          begin AYvalue := 0; end;
       end;
+    Result := False;
+    exit;
     end;
+  // х внутри диапазона определения функции, экстраполяция не требуется
   Result := True;
 end;
 //---------------------------------------------------------------------------
@@ -590,14 +569,7 @@ procedure SetPxPy;
 // устанавливаем указатели px py на начало актуальных данных
 begin
   case InputMode of
-    0: // из свойств
-      begin
-        // устанавливаем указатели на свойства
-        px := prop_Xi_arr.Arr;
-        py := prop_Fi_arr.Arr;
-      end;
-
-    1,2: // из файлов в разных вариантах
+    0,1,2: // из файлов в разных вариантах
       begin
           // устанавливаем указатели на считанные данные
           px := Xi_data.Arr;
@@ -618,13 +590,13 @@ function  CheckChanges: boolean;
 // входной вектор был изменен?
 // Это Признак для пересчета внутренних матриц функций интерполяции
 var
-  j: integer;
+  q: integer;
 begin
   Result := False;
-  for j:=0 to Npoints - 1 do // идем по данным, если видим неравенство - данные новые.
-    if (x_stamp[i].Arr^[j] <> px[j]) or (y_stamp[i].Arr^[j] <> py[j]) then begin
-      x_stamp[i].Arr^[j] := px[j];
-      y_stamp[i].Arr^[j] := py[j];
+  for q:=0 to Npoints - 1 do // идем по данным, если видим неравенство - данные новые.
+    if (x_stamp[i].Arr^[q] <> px[q]) or (y_stamp[i].Arr^[q] <> py[q]) then begin
+      x_stamp[i].Arr^[q] := px[q];
+      y_stamp[i].Arr^[q] := py[q];
       Result:=True;
       end;
 end;
@@ -638,12 +610,6 @@ begin
   case Action of
     f_InitObjects:
       begin
-        // загружаем таблицу функции из заданного источника
-        if not LoadFunc() then begin
-          Result := r_Fail;
-          exit;
-          end;
-
         //Здесь устанавливаем нужные размерности вспомогательных таблиц и переменных
         SetLength(LastInd,GetFullDim(cU[2].Dim));
         ZeroMemory(Pointer(LastInd), GetFullDim(cU[2].Dim)*SizeOf(NativeInt));
