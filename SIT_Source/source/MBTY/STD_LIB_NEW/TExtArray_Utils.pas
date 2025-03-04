@@ -1,5 +1,5 @@
-//**************************************************************************//
- // Данный исходный код является составной частью системы SimInTech          //
+п»ї//**************************************************************************//
+ // Р”Р°РЅРЅС‹Р№ РёСЃС…РѕРґРЅС‹Р№ РєРѕРґ СЏРІР»СЏРµС‚СЃСЏ СЃРѕСЃС‚Р°РІРЅРѕР№ С‡Р°СЃС‚СЊСЋ СЃРёСЃС‚РµРјС‹ SimInTech          //
  //**************************************************************************//
 
 {$IFDEF FPC}
@@ -12,7 +12,7 @@ interface
 
 uses {$IFNDEF FPC}Windows,{$ENDIF}
      Classes, MBTYArrays, DataTypes, DataObjts, SysUtils, abstract_im_interface, RunObjts, Math, LinFuncs,
-     tbls, Data_blocks, InterpolFuncs, mbty_std_consts, uExtMath, System.StrUtils;
+     tbls, Data_blocks, mbty_std_consts;
 
 
 function TExtArray_IsOrdered(Arr: TExtArray): Boolean;
@@ -28,14 +28,14 @@ procedure TExtArray2_cpy(var ADst: TExtArray2;const ASrc: TExtArray2);
 
 implementation
 
-uses RealArrays;
+uses StrUtils, RealArrays;
 //===========================================================================
 procedure TExtArray_cpy(var ADst: TExtArray;const ASrc: TExtArray);
-// скопировать Asrc->ADst. может изменить память ADst
+// СЃРєРѕРїРёСЂРѕРІР°С‚СЊ Asrc->ADst. РјРѕР¶РµС‚ РёР·РјРµРЅРёС‚СЊ РїР°РјСЏС‚СЊ ADst
 var
   i: Integer;
 begin
-  // TODO - переделать на Move
+  // TODO - РїРµСЂРµРґРµР»Р°С‚СЊ РЅР° Move
   ADst.Count := ASrc.Count;
   for i:=0 to ASrc.Count-1 do begin
     ADst[i] := ASrc[i];
@@ -43,11 +43,11 @@ begin
 end;
 //----------------------------------------------------------------------------
 procedure TExtArray2_cpy(var ADst: TExtArray2;const ASrc: TExtArray2);
-// скопировать Asrc->ADst. может изменить память ADst
+// СЃРєРѕРїРёСЂРѕРІР°С‚СЊ Asrc->ADst. РјРѕР¶РµС‚ РёР·РјРµРЅРёС‚СЊ РїР°РјСЏС‚СЊ ADst
 var
   i,j: Integer;
 begin
-  // TODO - переделать на Move
+  // TODO - РїРµСЂРµРґРµР»Р°С‚СЊ РЅР° Move
   ADst.ChangeCount(ASrc.CountX, ASrc.GetMaxCountY);
   for i:=0 to ASrc.CountX-1 do begin
     ADst[i].Count := ASrc[i].Count;
@@ -59,7 +59,7 @@ begin
 end;
 
 function TExtArray_IsOrdered(Arr: TExtArray): Boolean;
-// проверить, упорядочен ли массив
+// РїСЂРѕРІРµСЂРёС‚СЊ, СѓРїРѕСЂСЏРґРѕС‡РµРЅ Р»Рё РјР°СЃСЃРёРІ
 var
   i: Integer;
 begin
@@ -73,7 +73,7 @@ begin
 end;
 //---------------------------------------------------------------------------
 function TExtArray_HasDuplicates(Arr: TExtArray): Boolean;
-// проверить, есть ли дупликаты значений в массиве
+// РїСЂРѕРІРµСЂРёС‚СЊ, РµСЃС‚СЊ Р»Рё РґСѓРїР»РёРєР°С‚С‹ Р·РЅР°С‡РµРЅРёР№ РІ РјР°СЃСЃРёРІРµ
 var
   i: Integer;
 begin
@@ -88,10 +88,10 @@ end;
 
 //----------------------------------------------------------------------------
 procedure TExtArray_Sort_XY_Arr(Xarr: TExtArray; Yarr: TExtArray; NPoints,Fdim: Integer);
-// отсортировать по возрастанию X пары значений (X;Y). Yi - векторный,
-// длина Y должна быть кратна X
+// РѕС‚СЃРѕСЂС‚РёСЂРѕРІР°С‚СЊ РїРѕ РІРѕР·СЂР°СЃС‚Р°РЅРёСЋ X РїР°СЂС‹ Р·РЅР°С‡РµРЅРёР№ (X;Y). Yi - РІРµРєС‚РѕСЂРЅС‹Р№,
+// РґР»РёРЅР° Y РґРѕР»Р¶РЅР° Р±С‹С‚СЊ РєСЂР°С‚РЅР° X
 procedure swapPoint(q,w: Integer);
-// поменять точки q,w местами
+// РїРѕРјРµРЅСЏС‚СЊ С‚РѕС‡РєРё q,w РјРµСЃС‚Р°РјРё
 var
   x1,y1: RealType;
   ff1: Integer;
@@ -100,7 +100,7 @@ begin
   Xarr[q] := Xarr[w];
   Xarr[w] := x1;
 
-  for ff1:=0 to Fdim-1 do begin // странное расположение массивов в памяти, но как есть
+  for ff1:=0 to Fdim-1 do begin // СЃС‚СЂР°РЅРЅРѕРµ СЂР°СЃРїРѕР»РѕР¶РµРЅРёРµ РјР°СЃСЃРёРІРѕРІ РІ РїР°РјСЏС‚Рё, РЅРѕ РєР°Рє РµСЃС‚СЊ
     y1 := Yarr[q+ff1*NPoints];
     Yarr[q+ff1*NPoints] := Yarr[w+ff1*NPoints];
     Yarr[w+ff1*NPoints] := y1;
@@ -129,25 +129,25 @@ end;
 //===========================================================================
 //---------------------------------------------------------------------------
 procedure RemoveCommentsFromStrings(var Strings:TStringList);
-// пустые строки, строки начинающиеся с $, части строк за // - отбрасываем
+// РїСѓСЃС‚С‹Рµ СЃС‚СЂРѕРєРё, СЃС‚СЂРѕРєРё РЅР°С‡РёРЅР°СЋС‰РёРµСЃСЏ СЃ $, С‡Р°СЃС‚Рё СЃС‚СЂРѕРє Р·Р° // - РѕС‚Р±СЂР°СЃС‹РІР°РµРј
 var
   slist2: TStringList;
   i,position: Integer;
   str1: string;
 begin
   slist2 := TStringList.Create;
-  // отбрасываем комментарии и пустые строки
+  // РѕС‚Р±СЂР°СЃС‹РІР°РµРј РєРѕРјРјРµРЅС‚Р°СЂРёРё Рё РїСѓСЃС‚С‹Рµ СЃС‚СЂРѕРєРё
   for i:=0 to Strings.Count-1 do begin
     str1 := Strings.Strings[i];
     if StartsText('$', str1) then continue;
 
     position := Pos('//',str1);
-    if position>=1 then begin // отбрасываем закомментированый хвост
+    if position>=1 then begin // РѕС‚Р±СЂР°СЃС‹РІР°РµРј Р·Р°РєРѕРјРјРµРЅС‚РёСЂРѕРІР°РЅС‹Р№ С…РІРѕСЃС‚
       SetLength(str1, position);
       end;
 
     str1 := Trim(str1);
-    if str1='' then continue; // отбрасываем пустые строки
+    if str1='' then continue; // РѕС‚Р±СЂР°СЃС‹РІР°РµРј РїСѓСЃС‚С‹Рµ СЃС‚СЂРѕРєРё
     slist2.Add(str1);
     end;
 
@@ -157,15 +157,15 @@ end;
 //--------------------------------------------------------------------------
 
 function Load_TExtArray2_FromBracketFile(FileName: string; var arrayVect: TExtArray2): Boolean;
-// загрузить массив векторов из файла
+// Р·Р°РіСЂСѓР·РёС‚СЊ РјР°СЃСЃРёРІ РІРµРєС‚РѕСЂРѕРІ РёР· С„Р°Р№Р»Р°
 var
   slist1,slist2,slist3: TStringList;
   str1,str2: string;
   v1: RealType;
   i,j: integer;
 begin
-  // пример файла [[0 , 1 , 2 , 9];[0 , 5 , 8];[0 , 3]]
-  // пустые строки, строки начинающиеся с $, части строк за // - отбрасываем
+  // РїСЂРёРјРµСЂ С„Р°Р№Р»Р° [[0 , 1 , 2 , 9];[0 , 5 , 8];[0 , 3]]
+  // РїСѓСЃС‚С‹Рµ СЃС‚СЂРѕРєРё, СЃС‚СЂРѕРєРё РЅР°С‡РёРЅР°СЋС‰РёРµСЃСЏ СЃ $, С‡Р°СЃС‚Рё СЃС‚СЂРѕРє Р·Р° // - РѕС‚Р±СЂР°СЃС‹РІР°РµРј
   Result := True;
   try
     slist1 := TStringList.Create;
@@ -173,18 +173,18 @@ begin
     slist3 := TStringList.Create;
 
     slist1.LoadFromFile(FileName);
-    // отбрасываем комментарии и пустые строки
+    // РѕС‚Р±СЂР°СЃС‹РІР°РµРј РєРѕРјРјРµРЅС‚Р°СЂРёРё Рё РїСѓСЃС‚С‹Рµ СЃС‚СЂРѕРєРё
     RemoveCommentsFromStrings(slist1);
 
     slist1.LineBreak := ';';
 
     str1 := slist1.Text;
-    //TODO - добавить проверку наличия двойных скобок.
-    // заменяем двойные скобки на одинарные
+    //TODO - РґРѕР±Р°РІРёС‚СЊ РїСЂРѕРІРµСЂРєСѓ РЅР°Р»РёС‡РёСЏ РґРІРѕР№РЅС‹С… СЃРєРѕР±РѕРє.
+    // Р·Р°РјРµРЅСЏРµРј РґРІРѕР№РЅС‹Рµ СЃРєРѕР±РєРё РЅР° РѕРґРёРЅР°СЂРЅС‹Рµ
     str1 := StringReplace(str1, '[[', '[', [rfReplaceAll, rfIgnoreCase]);
     str1 := StringReplace(str1, ']]', ']', [rfReplaceAll, rfIgnoreCase]);
 
-    // случай запятые вместо двоеточий.
+    // СЃР»СѓС‡Р°Р№ Р·Р°РїСЏС‚С‹Рµ РІРјРµСЃС‚Рѕ РґРІРѕРµС‚РѕС‡РёР№.
     str1 := StringReplace(str1, '],', '];', [rfReplaceAll, rfIgnoreCase]);
     str1 := StringReplace(str1, '] ,', '];', [rfReplaceAll, rfIgnoreCase]);
 
@@ -220,14 +220,14 @@ end;
 
 //---------------------------------------------------------------------------
 function Load_TExtArray_FromBracketFile(FileName: string; var array1: TExtArray): Boolean;
-// загрузить вектор из файла
+// Р·Р°РіСЂСѓР·РёС‚СЊ РІРµРєС‚РѕСЂ РёР· С„Р°Р№Р»Р°
 var
   slist1: TStringList;
   str1: string;
   v1: RealType;
   i: Integer;
 begin
-  // пример файла [0 , 0.1 , 1.1 , 1.2 , 3.5 , 3.3 , 6.1 , 6.2 , 7.1 , 7.2 , 9.1 , 9.2 , 8.1 , 8.3 , 5.6 , 5.9 , 3.7 , 3.9 , 18.1 , 18.3 , 15.6 , 5.9 , 13.7 , 13.9]
+  // РїСЂРёРјРµСЂ С„Р°Р№Р»Р° [0 , 0.1 , 1.1 , 1.2 , 3.5 , 3.3 , 6.1 , 6.2 , 7.1 , 7.2 , 9.1 , 9.2 , 8.1 , 8.3 , 5.6 , 5.9 , 3.7 , 3.9 , 18.1 , 18.3 , 15.6 , 5.9 , 13.7 , 13.9]
   Result := True;
 
   try

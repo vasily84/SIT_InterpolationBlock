@@ -1,5 +1,5 @@
-//**************************************************************************//
-// Äàííûé èñõîäíûé êîä ÿâëÿåòñÿ ñîñòàâíîé ÷àñòüþ ñèñòåìû SimInTech         //
+ï»¿//**************************************************************************//
+// Ð”Ð°Ð½Ð½Ñ‹Ð¹ Ð¸ÑÑ…Ð¾Ð´Ð½Ñ‹Ð¹ ÐºÐ¾Ð´ ÑÐ²Ð»ÑÐµÑ‚ÑÑ ÑÐ¾ÑÑ‚Ð°Ð²Ð½Ð¾Ð¹ Ñ‡Ð°ÑÑ‚ÑŒÑŽ ÑÐ¸ÑÑ‚ÐµÐ¼Ñ‹ SimInTech         //
 //*************************************************************************//
 
 {$IFDEF FPC}
@@ -9,22 +9,22 @@
 unit Keybrd;
 
  //***************************************************************************//
- //                Áëîê ââîäà ñ êëàâèàòóðû
+ //                Ð‘Ð»Ð¾Ðº Ð²Ð²Ð¾Ð´Ð° Ñ ÐºÐ»Ð°Ð²Ð¸Ð°Ñ‚ÑƒÑ€Ñ‹
  //***************************************************************************//
 
 interface
-//TODO - ïðîâåðèòü, êàê ñîáåðåòñÿ ïîä Ëèíóõ. Ëèíóõ çàãîëîâêè ïî èíôî ñ ôîðóìîâ.
-uses {$IFNDEF FPC}Windows,{$ELSE}JwaWinUser,LCLIntf, LCLType, LMessages{$ENDIF}
-     Classes, MBTYArrays, DataTypes, DataObjts, SysUtils, abstract_im_interface, RunObjts, mbty_std_consts, System.StrUtils;
+//TODO - Ð¿Ñ€Ð¾Ð²ÐµÑ€Ð¸Ñ‚ÑŒ, ÐºÐ°Ðº ÑÐ¾Ð±ÐµÑ€ÐµÑ‚ÑÑ Ð¿Ð¾Ð´ Ð›Ð¸Ð½ÑƒÑ…. Ð›Ð¸Ð½ÑƒÑ… Ð·Ð°Ð³Ð¾Ð»Ð¾Ð²ÐºÐ¸ Ð¿Ð¾ Ð¸Ð½Ñ„Ð¾ Ñ Ñ„Ð¾Ñ€ÑƒÐ¼Ð¾Ð².
+uses {$IFNDEF FPC}Windows,{$ELSE}LCLIntf, LCLType, LMessages,{$ENDIF}
+     Classes, MBTYArrays, DataTypes, DataObjts, SysUtils, abstract_im_interface, RunObjts, mbty_std_consts;
 
 type
 /////////////////////////////////////////////////////////////////////////////
-// áëîê ââîäà ñ êëàâèàòóðû
+// Ð±Ð»Ð¾Ðº Ð²Ð²Ð¾Ð´Ð° Ñ ÐºÐ»Ð°Ð²Ð¸Ð°Ñ‚ÑƒÑ€Ñ‹
   TUserKeybrd = class(TRunObject)
   protected
-    property_KeySet: TMultiSelect; // ÌÍÎÆÅÑÒÂÎ ñòðîêîâûõ íàçâàíèé êëàâèø, êîòîðûå ìû äîëíû îïðîñèòü - ñâ-âî Îáúåêòà
-    keyCodesArray: TIntArray; // ÷èñëåííûå âèðòóàëüíûå êîäû îïðàøèâàåìûõ êëàâèø
-    // ÔÓÍÊÖÈß ÄËß ÎÒËÀÄÊÈ - ïðîâåðèòü, ÷òî êàæäîé êëàâèøå â property_keySet ïðèñâîåí êîä
+    property_KeySet: TMultiSelect; // ÐœÐÐžÐ–Ð•Ð¡Ð¢Ð’Ðž ÑÑ‚Ñ€Ð¾ÐºÐ¾Ð²Ñ‹Ñ… Ð½Ð°Ð·Ð²Ð°Ð½Ð¸Ð¹ ÐºÐ»Ð°Ð²Ð¸Ñˆ, ÐºÐ¾Ñ‚Ð¾Ñ€Ñ‹Ðµ Ð¼Ñ‹ Ð´Ð¾Ð»Ð½Ñ‹ Ð¾Ð¿Ñ€Ð¾ÑÐ¸Ñ‚ÑŒ - ÑÐ²-Ð²Ð¾ ÐžÐ±ÑŠÐµÐºÑ‚Ð°
+    keyCodesArray: TIntArray; // Ñ‡Ð¸ÑÐ»ÐµÐ½Ð½Ñ‹Ðµ Ð²Ð¸Ñ€Ñ‚ÑƒÐ°Ð»ÑŒÐ½Ñ‹Ðµ ÐºÐ¾Ð´Ñ‹ Ð¾Ð¿Ñ€Ð°ÑˆÐ¸Ð²Ð°ÐµÐ¼Ñ‹Ñ… ÐºÐ»Ð°Ð²Ð¸Ñˆ
+    // Ð¤Ð£ÐÐšÐ¦Ð˜Ð¯ Ð”Ð›Ð¯ ÐžÐ¢Ð›ÐÐ”ÐšÐ˜ - Ð¿Ñ€Ð¾Ð²ÐµÑ€Ð¸Ñ‚ÑŒ, Ñ‡Ñ‚Ð¾ ÐºÐ°Ð¶Ð´Ð¾Ð¹ ÐºÐ»Ð°Ð²Ð¸ÑˆÐµ Ð² property_keySet Ð¿Ñ€Ð¸ÑÐ²Ð¾ÐµÐ½ ÐºÐ¾Ð´
     function testKeySetAssignment(slist1: TStringList): Boolean;
   public
     function       InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
@@ -37,15 +37,15 @@ type
 /////////////////////////////////////////////////////////////////////////////
 
 implementation
-uses RealArrays, IntArrays;
+uses StrUtils, RealArrays, IntArrays;
 
 const
 {$IFNDEF ENG}
-  txtKeyUnknown1 = 'Çíà÷åíèå êëàâèøè "';
-  txtKeyUnknown2 = '" íå îïðåäåëåíî';
-  txtUselessKeyboard = 'Áëîê êëàâèàòóðíîãî ââîäà íå îïðàøèâàåò íè îäíîé êëàâèøè';
-  txtParamUnknown1 = 'ïàðàìåòð "';
-  txtParamUnknown2 = '" â áëîêå íå íàéäåí';
+  txtKeyUnknown1 = 'Ð—Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ ÐºÐ»Ð°Ð²Ð¸ÑˆÐ¸ "';
+  txtKeyUnknown2 = '" Ð½Ðµ Ð¾Ð¿Ñ€ÐµÐ´ÐµÐ»ÐµÐ½Ð¾';
+  txtUselessKeyboard = 'Ð‘Ð»Ð¾Ðº ÐºÐ»Ð°Ð²Ð¸Ð°Ñ‚ÑƒÑ€Ð½Ð¾Ð³Ð¾ Ð²Ð²Ð¾Ð´Ð° Ð½Ðµ Ð¾Ð¿Ñ€Ð°ÑˆÐ¸Ð²Ð°ÐµÑ‚ Ð½Ð¸ Ð¾Ð´Ð½Ð¾Ð¹ ÐºÐ»Ð°Ð²Ð¸ÑˆÐ¸';
+  txtParamUnknown1 = 'Ð¿Ð°Ñ€Ð°Ð¼ÐµÑ‚Ñ€ "';
+  txtParamUnknown2 = '" Ð² Ð±Ð»Ð¾ÐºÐµ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½';
 {$ELSE}
   txtKeyUnknown1 = 'Button labeled "';
   txtKeyUnknown2 = '" is undefined';
@@ -59,7 +59,7 @@ begin
   inherited;
   keyCodesArray := TIntArray.Create(1);
   property_KeySet := TMultiSelect.Create(Self);
-//TODO - óòî÷íèòü, íóæíî ëè
+//TODO - ÑƒÑ‚Ð¾Ñ‡Ð½Ð¸Ñ‚ÑŒ, Ð½ÑƒÐ¶Ð½Ð¾ Ð»Ð¸
   IsLinearBlock := True;
 end;
 
@@ -71,13 +71,13 @@ begin
 end;
 //---------------------------------------------------------------------------
 function VkStringToCode(AKeyCaption: string): SmallInt;
-// âîçâðàùàåò ÷èñëåííûé êîä âèðòóàëüíîé êëàâèøè ïî åãî òåêñòîâîìó íàçâàíèþ
-// îäíîé êëàâèøå ìîæåò áûòü íàçíà÷åíî íåñêîëüêî íàçâàíèé, íàïðèìåð íà ðàçíûõ ÿçûêàõ
+// Ð²Ð¾Ð·Ð²Ñ€Ð°Ñ‰Ð°ÐµÑ‚ Ñ‡Ð¸ÑÐ»ÐµÐ½Ð½Ñ‹Ð¹ ÐºÐ¾Ð´ Ð²Ð¸Ñ€Ñ‚ÑƒÐ°Ð»ÑŒÐ½Ð¾Ð¹ ÐºÐ»Ð°Ð²Ð¸ÑˆÐ¸ Ð¿Ð¾ ÐµÐ³Ð¾ Ñ‚ÐµÐºÑÑ‚Ð¾Ð²Ð¾Ð¼Ñƒ Ð½Ð°Ð·Ð²Ð°Ð½Ð¸ÑŽ
+// Ð¾Ð´Ð½Ð¾Ð¹ ÐºÐ»Ð°Ð²Ð¸ÑˆÐµ Ð¼Ð¾Ð¶ÐµÑ‚ Ð±Ñ‹Ñ‚ÑŒ Ð½Ð°Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¾ Ð½ÐµÑÐºÐ¾Ð»ÑŒÐºÐ¾ Ð½Ð°Ð·Ð²Ð°Ð½Ð¸Ð¹, Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€ Ð½Ð° Ñ€Ð°Ð·Ð½Ñ‹Ñ… ÑÐ·Ñ‹ÐºÐ°Ñ…
 var
   keyLabel: string;
 
 procedure checkKeyLabel(const AValues: array of string; Num: Byte);
-// ïðèñâàèâàåò Result ÷èñëåííûé êîä êëàâèøè, åñëè åå òåêñòîâîå èìÿ ïåðå÷èñëåíî â AValues
+// Ð¿Ñ€Ð¸ÑÐ²Ð°Ð¸Ð²Ð°ÐµÑ‚ Result Ñ‡Ð¸ÑÐ»ÐµÐ½Ð½Ñ‹Ð¹ ÐºÐ¾Ð´ ÐºÐ»Ð°Ð²Ð¸ÑˆÐ¸, ÐµÑÐ»Ð¸ ÐµÐµ Ñ‚ÐµÐºÑÑ‚Ð¾Ð²Ð¾Ðµ Ð¸Ð¼Ñ Ð¿ÐµÑ€ÐµÑ‡Ð¸ÑÐ»ÐµÐ½Ð¾ Ð² AValues
 var
   str1: string;
   i: Integer;
@@ -94,10 +94,10 @@ end;
 var
   b: Byte;
 begin
-  Result := 0; // âèðòóàëüíîé êëàâèøè ñ êîäîì íóëü íåò. Çíà÷èò - íè÷åãî íå íàøëè
+  Result := 0; // Ð²Ð¸Ñ€Ñ‚ÑƒÐ°Ð»ÑŒÐ½Ð¾Ð¹ ÐºÐ»Ð°Ð²Ð¸ÑˆÐ¸ Ñ ÐºÐ¾Ð´Ð¾Ð¼ Ð½ÑƒÐ»ÑŒ Ð½ÐµÑ‚. Ð—Ð½Ð°Ñ‡Ð¸Ñ‚ - Ð½Ð¸Ñ‡ÐµÐ³Ð¾ Ð½Ðµ Ð½Ð°ÑˆÐ»Ð¸
   keyLabel := UpperCase(Trim(AKeyCaption));
 
-  // ýòî öèôðà èëè áóêâà
+  // ÑÑ‚Ð¾ Ñ†Ð¸Ñ„Ñ€Ð° Ð¸Ð»Ð¸ Ð±ÑƒÐºÐ²Ð°
   if Length(keyLabel) = 1 then begin
     b := ORD(keyLabel[1]);
     if (((b>=ORD('0'))and(b<=ORD('9')))or((b>=ORD('A'))and(b<=ORD('Z')))) then begin
@@ -106,9 +106,9 @@ begin
       end;
     end;
 
-  // Virtual Keys, Standard Set, ñì. Microsoft Windows SDK
-  checkKeyLabel(['VK_LBUTTON', 'ËÊÌ'], VK_LButton);  //1
-  checkKeyLabel(['VK_RBUTTON', 'ÏÊÌ'], VK_RButton); //2
+  // Virtual Keys, Standard Set, ÑÐ¼. Microsoft Windows SDK
+  checkKeyLabel(['VK_LBUTTON', 'Ð›ÐšÐœ'], VK_LButton);  //1
+  checkKeyLabel(['VK_RBUTTON', 'ÐŸÐšÐœ'], VK_RButton); //2
   checkKeyLabel(['VK_CANCEL','vkCancel'], VK_Cancel); //3
   checkKeyLabel(['VK_MBUTTON','vkMButton'], VK_MButton); //4  // NOT contiguous with L & RBUTTON
   checkKeyLabel(['VK_XBUTTON1', 'vkXButton1'], VK_XButton1); //5
@@ -116,7 +116,7 @@ begin
   checkKeyLabel(['VK_BACK', 'Backspace'], VK_Back); //8
   checkKeyLabel(['VK_TAB', 'Tab'], VK_Tab); //9
   checkKeyLabel(['VK_CLEAR', 'vkClear'], VK_Clear); //12
-  checkKeyLabel(['VK_RETURN', 'ÂÂÎÄ','Enter'], VK_Return); //13
+  checkKeyLabel(['VK_RETURN', 'Ð’Ð’ÐžÐ”','Enter'], VK_Return); //13
 
   checkKeyLabel(['VK_SHIFT', 'Shift'], VK_Shift); // $10, 16
   checkKeyLabel(['VK_CONTROL', 'Ctrl'], VK_Control); //17
@@ -134,15 +134,15 @@ begin
   checkKeyLabel(['VK_ACCEPT', 'vkAccept'], VK_Accept); //30
   checkKeyLabel(['VK_MODECHANGE', 'vkModeChange'], VK_ModeChange); //31
   checkKeyLabel(['VK_ESCAPE', 'Esc'], VK_Escape); //27
-  checkKeyLabel(['VK_SPACE', 'ÏÐÎÁÅË'], VK_Space); // $20
+  checkKeyLabel(['VK_SPACE', 'ÐŸÐ ÐžÐ‘Ð•Ð›'], VK_Space); // $20
   checkKeyLabel(['VK_PRIOR', 'Page Up'], VK_Prior); //33
   checkKeyLabel(['VK_NEXT', 'Page Down'], VK_Next); //34
   checkKeyLabel(['VK_END', 'End'], VK_End); //35
   checkKeyLabel(['VK_HOME', 'Home'], VK_Home); //35
-  checkKeyLabel(['VK_LEFT', 'ÑÒÐÅËÊÀ ËÅÂ'], VK_Left); //37
-  checkKeyLabel(['VK_UP', 'ÑÒÐÅËÊÀ ÂÅÐÕ'], VK_Up); //38
-  checkKeyLabel(['VK_RIGHT', 'ÑÒÐÅËÊÀ ÏÐÀÂ'], VK_Right); //39
-  checkKeyLabel(['VK_DOWN', 'ÑÒÐÅËÊÀ ÍÈÇ'], VK_Down); //40
+  checkKeyLabel(['VK_LEFT', 'Ð¡Ð¢Ð Ð•Ð›ÐšÐ Ð›Ð•Ð’'], VK_Left); //37
+  checkKeyLabel(['VK_UP', 'Ð¡Ð¢Ð Ð•Ð›ÐšÐ Ð’Ð•Ð Ð¥'], VK_Up); //38
+  checkKeyLabel(['VK_RIGHT', 'Ð¡Ð¢Ð Ð•Ð›ÐšÐ ÐŸÐ ÐÐ’'], VK_Right); //39
+  checkKeyLabel(['VK_DOWN', 'Ð¡Ð¢Ð Ð•Ð›ÐšÐ ÐÐ˜Ð—'], VK_Down); //40
   checkKeyLabel(['VK_SELECT', 'vkSelect'], VK_Select); //41
   checkKeyLabel(['VK_PRINT', 'vkPrint'], VK_Print); //42
   checkKeyLabel(['VK_EXECUTE', 'vkExecute'], VK_Execute); //43
@@ -154,8 +154,8 @@ begin
   // VK_0 thru VK_9 are the same as ASCII '0' thru '9' ($30 - $39)
   // VK_A thru VK_Z are the same as ASCII 'A' thru 'Z' ($41 - $5A) }
 
-  checkKeyLabel(['VK_LWIN','Win ËÅÂ'], VK_LWin); //91
-  checkKeyLabel(['VK_RWIN', 'Win ÏÐÀÂ'], VK_RWin); //92
+  checkKeyLabel(['VK_LWIN','Win Ð›Ð•Ð’'], VK_LWin); //91
+  checkKeyLabel(['VK_RWIN', 'Win ÐŸÐ ÐÐ’'], VK_RWin); //92
   checkKeyLabel(['VK_APPS', 'vkApps'], VK_Apps); //93
   checkKeyLabel(['VK_SLEEP', 'vkSleep'], VK_Sleep); //95
   checkKeyLabel(['VK_NUMPAD0', 'Numpad 0'], VK_Numpad0); //96
@@ -206,12 +206,12 @@ begin
   // VK_L & VK_R - left and right Alt, Ctrl and Shift virtual keys.
   //  Used only as parameters to GetAsyncKeyState() and GetKeyState().
   //  No other API or message will distinguish left and right keys in this way.
-  checkKeyLabel(['VK_LSHIFT', 'Shift ËÅÂ'], VK_LShift); //160
-  checkKeyLabel(['VK_RSHIFT', 'Shift ÏÐÀÂ'], VK_RShift); //161
-  checkKeyLabel(['VK_LCONTROL', 'Ctrl ËÅÂ'], VK_LControl); //162
-  checkKeyLabel(['VK_RCONTROL', 'Ctrl ÏÐÀÂ'], VK_RControl); //163
-  checkKeyLabel(['VK_LMENU', 'Menu ËÅÂ'], VK_LMenu); //163
-  checkKeyLabel(['VK_RMENU', 'Menu ÏÐÀÂ'], VK_RMenu); //165
+  checkKeyLabel(['VK_LSHIFT', 'Shift Ð›Ð•Ð’'], VK_LShift); //160
+  checkKeyLabel(['VK_RSHIFT', 'Shift ÐŸÐ ÐÐ’'], VK_RShift); //161
+  checkKeyLabel(['VK_LCONTROL', 'Ctrl Ð›Ð•Ð’'], VK_LControl); //162
+  checkKeyLabel(['VK_RCONTROL', 'Ctrl ÐŸÐ ÐÐ’'], VK_RControl); //163
+  checkKeyLabel(['VK_LMENU', 'Menu Ð›Ð•Ð’'], VK_LMenu); //163
+  checkKeyLabel(['VK_RMENU', 'Menu ÐŸÐ ÐÐ’'], VK_RMenu); //165
 
   //
   checkKeyLabel(['VK_BROWSER_BACK', 'VK_BROWSER_BACK'], VK_BROWSER_BACK);// 166;
@@ -247,7 +247,7 @@ begin
   checkKeyLabel(['VK_OEM_7', 'VK_OEM_7'], VK_OEM_7);// 222;
   checkKeyLabel(['VK_OEM_8', 'VK_OEM_8'], VK_OEM_8);// 223;
   checkKeyLabel(['VK_OEM_102', 'VK_OEM_102'], VK_OEM_102);// 226;
-  checkKeyLabel(['VK_PACKET', 'VK_PACKET'], VK_PACKET);// 231
+  //checkKeyLabel(['VK_PACKET', 'VK_PACKET'], VK_PACKET);// 231
 
   //
   checkKeyLabel(['VK_PROCESSKEY', 'vkProcessKey'], VK_ProcessKey); //229
@@ -262,7 +262,7 @@ begin
   checkKeyLabel(['VK_OEM_CLEAR', 'vkOemClear'], VK_Oem_Clear); //254
 end;
 //--------------------------------------------------------------------------
-// ÔÓÍÊÖÈß ÄËß ÎÒËÀÄÊÈ - ïðîâåðèòü, ÷òî êàæäîé êëàâèøå â property_keySet ïðèñâîåí êîä
+// Ð¤Ð£ÐÐšÐ¦Ð˜Ð¯ Ð”Ð›Ð¯ ÐžÐ¢Ð›ÐÐ”ÐšÐ˜ - Ð¿Ñ€Ð¾Ð²ÐµÑ€Ð¸Ñ‚ÑŒ, Ñ‡Ñ‚Ð¾ ÐºÐ°Ð¶Ð´Ð¾Ð¹ ÐºÐ»Ð°Ð²Ð¸ÑˆÐµ Ð² property_keySet Ð¿Ñ€Ð¸ÑÐ²Ð¾ÐµÐ½ ÐºÐ¾Ð´
 function TUserKeybrd.testKeySetAssignment(slist1: TStringList): Boolean;
 var
   str1: string;
@@ -294,9 +294,9 @@ begin
           slist1.LineBreak := #13#10;
           slist1.Text := property_KeySet.Items;
 
-          // ïðîâåðêà, ÷òî íàçâàíèÿ êëàâèø â íàáîðå ïðèâÿçàíû ê ÷èñëåííîìó êîäó
-          // ÐÅÊÎÌÅÍÄÓÞ ðàñêîììåíòèðîâàòü ýòîò êîä ïðè äîáàâëåíèè íîâûõ êëàâèø â SimInTech
-          // íà ïåðèîä îòëàäêè
+          // Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐºÐ°, Ñ‡Ñ‚Ð¾ Ð½Ð°Ð·Ð²Ð°Ð½Ð¸Ñ ÐºÐ»Ð°Ð²Ð¸Ñˆ Ð² Ð½Ð°Ð±Ð¾Ñ€Ðµ Ð¿Ñ€Ð¸Ð²ÑÐ·Ð°Ð½Ñ‹ Ðº Ñ‡Ð¸ÑÐ»ÐµÐ½Ð½Ð¾Ð¼Ñƒ ÐºÐ¾Ð´Ñƒ
+          // Ð Ð•ÐšÐžÐœÐ•ÐÐ”Ð£Ð® Ñ€Ð°ÑÐºÐ¾Ð¼Ð¼ÐµÐ½Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ ÑÑ‚Ð¾Ñ‚ ÐºÐ¾Ð´ Ð¿Ñ€Ð¸ Ð´Ð¾Ð±Ð°Ð²Ð»ÐµÐ½Ð¸Ð¸ Ð½Ð¾Ð²Ñ‹Ñ… ÐºÐ»Ð°Ð²Ð¸Ñˆ Ð² SimInTech
+          // Ð½Ð° Ð¿ÐµÑ€Ð¸Ð¾Ð´ Ð¾Ñ‚Ð»Ð°Ð´ÐºÐ¸
           if False then begin
           //if testKeySetAssignment(slist1)=False then begin
             Result := r_Fail;
@@ -304,7 +304,7 @@ begin
             exit;
             end;
 
-          // ïðîâåðêà, ÷òî èäåò îïðîñ õîòÿ áû îäíîé êëàâèøè êëàâèàòóðû
+          // Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐºÐ°, Ñ‡Ñ‚Ð¾ Ð¸Ð´ÐµÑ‚ Ð¾Ð¿Ñ€Ð¾Ñ Ñ…Ð¾Ñ‚Ñ Ð±Ñ‹ Ð¾Ð´Ð½Ð¾Ð¹ ÐºÐ»Ð°Ð²Ð¸ÑˆÐ¸ ÐºÐ»Ð°Ð²Ð¸Ð°Ñ‚ÑƒÑ€Ñ‹
           if Length(property_KeySet.Selection)=0 then begin
             ErrorEvent(txtUselessKeyboard, msError, VisualObject);
             Result := r_Fail;
@@ -312,13 +312,13 @@ begin
             exit;
             end;
 
-          // ôîðìèðóåì ìàññèâ êîäîâ íàçíà÷åííûõ ê îïðîñó êëàâèø
+          // Ñ„Ð¾Ñ€Ð¼Ð¸Ñ€ÑƒÐµÐ¼ Ð¼Ð°ÑÑÐ¸Ð² ÐºÐ¾Ð´Ð¾Ð² Ð½Ð°Ð·Ð½Ð°Ñ‡ÐµÐ½Ð½Ñ‹Ñ… Ðº Ð¾Ð¿Ñ€Ð¾ÑÑƒ ÐºÐ»Ð°Ð²Ð¸Ñˆ
           keyCodesArray.ChangeCount(Length(property_KeySet.Selection));
           for i:=0 to Length(property_KeySet.Selection)-1 do begin
             str1 := slist1.Strings[property_KeySet.Selection[i]];
             keyCodesArray[i] := VkStringToCode(str1);
 
-            // äîïîëíèòåëüíî ïðîâåðÿåì, ÷òî êëàâèøå íàçíà÷åí êîä
+            // Ð´Ð¾Ð¿Ð¾Ð»Ð½Ð¸Ñ‚ÐµÐ»ÑŒÐ½Ð¾ Ð¿Ñ€Ð¾Ð²ÐµÑ€ÑÐµÐ¼, Ñ‡Ñ‚Ð¾ ÐºÐ»Ð°Ð²Ð¸ÑˆÐµ Ð½Ð°Ð·Ð½Ð°Ñ‡ÐµÐ½ ÐºÐ¾Ð´
             if(keyCodesArray[i]=0) then begin
               ErrorEvent(txtKeyUnknown1 + str1 + txtKeyUnknown2,msError, VisualObject);
               Result := r_Fail;
@@ -340,31 +340,26 @@ begin
 end;
 
 //---------------------------------------------------------------------------
-function TUserKeybrd.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
+function TUserKeybrd.RunFunc(var at,h: RealType; Action: Integer):NativeInt;
 var
-  keyResult: SmallInt;
+  keyResult: Boolean;
   i: Integer;
 begin
   Result := r_Success;
 
   case Action of
-    f_InitState: // ÷èòàåì-î÷èùàåì áóôåð windows ïðè íà÷àëå ðàáîòû
-      begin
-        for i:=0 to keyCodesArray.Count-1 do begin
-          GetAsyncKeyState(Integer(keyCodesArray[i]));
-          end;
-      end;
-
+    f_InitState,
     f_RestoreOuts,
     f_UpdateOuts,
     f_UpdateJacoby,
     f_GoodStep:
       begin
         for i:=0 to keyCodesArray.Count-1 do begin
-          keyResult := GetAsyncKeyState(Integer(keyCodesArray[i]));
+          //keyResult := GetAsyncKeyState(Integer(keyCodesArray[i]))<>0;
+          keyResult := GetKeyState((keyCodesArray[i]))<0;
 
-          if keyResult<>0 then Y[0][i] := 1.
-                          else Y[0][i] := 0.;
+          if keyResult then Y[0][i] := 1.
+                       else Y[0][i] := 0.;
           end;
       end;
 
