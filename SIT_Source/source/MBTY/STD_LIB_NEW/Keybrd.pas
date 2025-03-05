@@ -14,9 +14,32 @@ unit Keybrd;
 
 interface
 //TODO - проверить, как соберется под Линух. Линух заголовки по инфо с форумов.
-uses {$IFNDEF FPC}Windows,{$ELSE}LCLIntf, LCLType, LMessages,{$ENDIF}
-     Classes, MBTYArrays, DataTypes, DataObjts, SysUtils, abstract_im_interface, RunObjts, mbty_std_consts;
+uses {$IFNDEF FPC}Windows,{$ELSE}LCLIntf, LCLType, LMessages,BaseUnix,Termio,{$ENDIF}
+     Classes, MBTYArrays, DataTypes, DataObjts, SysUtils, abstract_im_interface, RunObjts,
+     mbty_std_consts;
+{$IFDEF FPC}
+type
+TInput_Event = packed record
+    Time: timeval;
+    etype: Word;
+    code: Word;
+    value: LongInt;
+  end;
 
+TKeyAndMouse = class(TObject)
+  public
+  oldTAttr,TAttr: TermIOS;
+  pfds: Tpollfd;
+  ret: Integer;
+  ev: Tinput_event;
+
+  function openDevice(devPath: string): Boolean;
+  function readKeys(keys:array of Word; var isPressed:array of SmallInt; Count: Integer): BOOLEAN;
+
+  constructor Create;
+  destructor Destroy;override;
+  end;
+{$ENDIF}
 type
 /////////////////////////////////////////////////////////////////////////////
 // блок ввода с клавиатуры
@@ -27,6 +50,11 @@ type
     // ФУНКЦИЯ ДЛЯ ОТЛАДКИ - проверить, что каждой клавише в property_keySet присвоен код
     function testKeySetAssignment(slist1: TStringList): Boolean;
   public
+    {$IFDEF FPC}
+    Keys: array of Word;
+    isKeyPressed: array of SmallInt;
+    keyPoll1,keyPoll2: TKeyAndMouse;
+    {$ENDIF}
     function       InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
     function       RunFunc(var at,h : RealType;Action:Integer):NativeInt;override;
     function       GetParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;override;
@@ -38,6 +66,16 @@ type
 
 implementation
 uses StrUtils, RealArrays, IntArrays;
+
+const
+  keybrdPath = '/dev/input/by-path/platform-i8042-serio-0-event-kbd';
+  mousePath = '/dev/input/by-path/platform-i8042-serio-1-event-mouse';
+  BTN_LEFT = $110;
+  BTN_RIGHT	=	$111;
+  KEY_UP = 103;
+  KEY_PAGEUP = 104;
+  KEY_LEFT = 105;
+  KEY_RIGHT = 106;
 
 const
 {$IFNDEF ENG}
@@ -54,13 +92,83 @@ const
   txtParamUnknown2 = '" is undefined';
 {$ENDIF}
 
+//---------------------------------------------------------------------------------------
+{$IFDEF FPC}
+function TKeyAndMouse.openDevice(devPath:string): Boolean;
+begin
+    Result := True;
+    pfds.fd := fpopen(devPath,O_RDONLY);
+    if(pfds.fd<0) then begin
+        Result := False;
+        Exit;
+        end;
+end;
+
+function TKeyAndMouse.readKeys(keys:array of Word; var isPressed:array of SmallInt; Count: Integer): BOOLEAN;
+const
+  EV_KEY = $01;
+  EV_REL = $02;
+  EV_REP = $14;
+var
+  i,n: Integer;
+begin
+  Result := True;
+  //for i:= 0 to Count-1 do begin // нулим массив со считанными клавишами
+  //  isPressed[i] := 0;
+  //  end;
+
+  pfds.events:=POLLIN;
+  ret := fpPoll(@pfds,1,0); // узнаем, есть ли данные в буфере
+  if ret=0 then exit;
+
+  repeat
+    n := fpRead(pfds.fd, ev,sizeof(TInput_event));
+    //if n<sizeof(sizeof(TInput_event)) then exit;
+
+    for i:=0 to Count-1 do begin
+      if (ev.code=keys[i]) then begin isPressed[i]:=ev.value;end;
+      end;
+    ret := fpPoll(@pfds,1,0);
+  until ret=0;
+end;
+
+constructor TKeyAndMouse.Create;
+begin
+   inherited;
+end;
+
+destructor TKeyAndMouse.Destroy;
+begin
+   inherited;
+end;
+{$ENDIF}
+
 constructor TUserKeybrd.Create;
+var
+  i: Integer;
 begin
   inherited;
   keyCodesArray := TIntArray.Create(1);
   property_KeySet := TMultiSelect.Create(Self);
 //TODO - уточнить, нужно ли
   IsLinearBlock := True;
+
+  {$IFDEF FPC}
+  SetLength(Keys,3);
+  SetLength(isKeyPressed,3);
+  Keys[0] := BTN_LEFT;
+  Keys[1] := KEY_UP;
+  Keys[2] := KEY_LEFT;
+
+  for i:= 0 to Length(Keys)-1 do begin // нулим массив со считанными клавишами
+    isKeyPressed[i] := 0;
+    end;
+
+  keyPoll1:= TKeyAndMouse.Create;
+  keyPoll1.openDevice(mousePath);
+  keyPoll2:= TKeyAndMouse.Create;
+  keyPoll2.openDevice(keybrdPath);
+  {$ENDIF}
 end;
 
 destructor  TUserKeybrd.Destroy;
@@ -332,7 +440,8 @@ begin
 
       i_GetCount:
         begin
-          cY[0].Dim:=SetDim([keyCodesArray.Count]);
+          //cY[0].Dim:=SetDim([keyCodesArray.Count]);
+          cY[0].Dim:=SetDim([3]);
         end
   else
     Result:=inherited InfoFunc(Action,aParameter);
@@ -344,6 +453,7 @@ function TUserKeybrd.RunFunc(var at,h: RealType; Action: Integer):NativeInt;
 var
   keyResult: Boolean;
   i: Integer;
+  str1: ansistring;
 begin
   Result := r_Success;
 
@@ -354,15 +464,26 @@ begin
     f_UpdateJacoby,
     f_GoodStep:
       begin
-        for i:=0 to keyCodesArray.Count-1 do begin
-          //keyResult := GetAsyncKeyState(Integer(keyCodesArray[i]))<>0;
-          keyResult := GetKeyState((keyCodesArray[i]))<0;
+        {$IFDEF FPC}
+        keyPoll1.readKeys(Keys,isKeyPressed,Length(Keys));
+        keyPoll2.readKeys(Keys,isKeyPressed,Length(Keys));
 
+        for i:=0 to Length(Keys)-1 do begin
+          //str1 := str1 +' '+IntToStr(isKeyPressed[i]);
+          keyResult := isKeyPressed[i]<>0;
           if keyResult then Y[0][i] := 1.
                        else Y[0][i] := 0.;
           end;
+        {$ELSE}
+        for i:=0 to keyCodesArray.Count-1 do begin
+          keyResult := GetAsyncKeyState(Integer(keyCodesArray[i]))<>0;
+          //keyResult := GetKeyState((keyCodesArray[i]))<0;
+          //str1 := TTYName;
+          if keyResult then Y[0][i] := 1.
+                       else Y[0][i] := 0.;
+          end;
+        {$ENDIF}
       end;
-
   end
 end;
 //--------------------------------------------------------------------------
