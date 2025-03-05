@@ -311,7 +311,7 @@ const
 
      (Name:'TInterpolationBlock1';      RunClass:TInterpolationBlock1),
      (Name:'TUserKeybrd';      RunClass:TUserKeybrd),
-     (Name:'TNewNDInterpol';      RunClass:TNewNDInterpol)
+     (Name:'TNewNDInterpol';      RunClass:TInterpolBlockMultiDim)
   );
 
 
