@@ -13,22 +13,23 @@ unit Keybrd;
  //***************************************************************************//
 
 interface
-//
-uses {$IFNDEF FPC}Windows,{$ELSE}LCLIntf, LCLType, LMessages,BaseUnix,Termio,x,xlib,keysym,{$ENDIF}
+
+uses {$IFNDEF FPC}Windows,{$ELSE}x,xlib,keysym,{$ENDIF}
      Classes, MBTYArrays, DataTypes, DataObjts, SysUtils, abstract_im_interface, RunObjts,
      mbty_std_consts;
 
 {$IFDEF FPC}
+// опрос клавиатуры под Линух на основе Xlib
 type TGlobalKbrd = class(TObject)
   public
     dpy: PXDisplay;
     keys_return:chararr32;
+    countRef: Integer;
     procedure refresh;
     function isKeyPressed(ASym: TKeySym):Boolean;
     constructor Create;
     destructor Destroy;override;
 end;
-
 {$ENDIF}
 
 type
@@ -41,9 +42,6 @@ type
     // ФУНКЦИЯ ДЛЯ ОТЛАДКИ - проверить, что каждой клавише в property_keySet присвоен код
     function testKeySetAssignment(slist1: TStringList): Boolean;
   public
-    {$IFDEF FPC}
-    kbrd: TGlobalKbrd;
-    {$ENDIF}
     function       InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
     function       RunFunc(var at,h : RealType;Action:Integer):NativeInt;override;
     function       GetParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;override;
@@ -52,9 +50,12 @@ type
   end;
 
 /////////////////////////////////////////////////////////////////////////////
-
+{$IFDEF FPC}
+var
+   kbrd: TGlobalKbrd = nil;
+{$ENDIF}
 implementation
-uses StrUtils, RealArrays, IntArrays;
+uses RealArrays, IntArrays;
 
 const
 {$IFNDEF ENG}
@@ -73,10 +74,10 @@ const
 
 //---------------------------------------------------------------------------------------
 {$IFDEF FPC}
-//---------------------------------------------------------------------------------------
 constructor TGlobalKbrd.Create;
 begin
   dpy := XOpenDisplay(nil);
+  countRef:=0;
 end;
 
 destructor TGlobalKbrd.Destroy;
@@ -91,29 +92,42 @@ end;
 
 function TGlobalKbrd.isKeyPressed(ASym: TKeySym):Boolean;
 var
-  kk: TKeySym;
+  kkL,kkR: TKeySym;
   b1,b2: Byte;
 begin
-  kk:=XkeySymToKeycode(dpy,ASym);
-  b1 := Byte(keys_return[kk div 8]);
-  b2 := (1 shl (kk mod 8));
+  // карта нажатых клавиш в Xlib - 32 байта последовательно,
+  // где номер клавиши соответствует номеру бита
+  b1 := Byte(keys_return[Asym div 8]);
+  b2 := (1 shl (Asym mod 8));
   Result := (b1 and b2)<>0;
-end;
 
+  if Result then exit; // клавиша нажата, все ок, возврат
+
+  // ниже проверки Left/Right для Shift и Cntl - в SIT Windows одна кнопка,
+  // без различий Лево-Право. В Линух они разные
+  kkL := XkeySymToKeycode(kbrd.dpy,XK_Control_L);
+  if kkL=Asym then begin
+    kkR := XkeySymToKeycode(kbrd.dpy,XK_Control_R);
+    Result:=isKeyPressed(kkR);
+    end;
+
+  kkL := XkeySymToKeycode(kbrd.dpy,XK_Shift_L);
+  if kkL=Asym then begin
+    kkR := XkeySymToKeycode(kbrd.dpy,XK_Shift_R);
+    Result:=isKeyPressed(kkR);
+    end;
+end;
 //-------------------------------------------------------------------------------
 {$ENDIF}
 
 constructor TUserKeybrd.Create;
-var
-  i: Integer;
 begin
   inherited;
   keyCodesArray := TIntArray.Create(1);
   property_KeySet := TMultiSelect.Create(Self);
-//TODO - уточнить, нужно ли
-  IsLinearBlock := True;
   {$IFDEF FPC}
-  kbrd := nil;
+  if not Assigned(kbrd) then kbrd := TGlobalKbrd.Create;
+  Inc(kbrd.countRef);
   {$ENDIF}
 end;
 
@@ -122,13 +136,237 @@ begin
   FreeAndNil(keyCodesArray);
   FreeAndNil(property_KeySet);
   {$IFDEF FPC}
-  FreeAndNil(kbrd);
+  if Assigned(kbrd) then begin
+    Dec(kbrd.countRef);
+    if(kbrd.countRef=0) then FreeAndNil(kbrd);
+    end;
   {$ENDIF}
   inherited;
 end;
 
 //---------------------------------------------------------------------------
-function VkStringToCode(AKeyCaption: string): SmallInt;
+{$IFDEF FPC}
+function VkStringToCode(AKeyCaption: string): Integer;
+// возвращает численный код виртуальной клавиши по его текстовому названию
+// одной клавише может быть назначено несколько названий, например на разных языках
+var
+  keyLabel: string;
+
+procedure checkKeyLabel(const AValues: array of string; Num: TKeySym);
+// присваивает Result численный код клавиши, если ее текстовое имя перечислено в AValues
+var
+  str1: string;
+  i: Integer;
+  kk: TKeySym;
+begin
+  for i:=0 to Length(AValues)-1 do begin
+    str1 := Trim(UpperCase(AValues[i]));
+    if (keyLabel=str1) then begin
+      kk:=XkeySymToKeycode(kbrd.dpy,Num);
+      Result := kk;
+      exit;
+      end;
+    end;
+end;
+
+begin
+  Result := 0; // виртуальной клавиши с кодом нуль нет. Значит - ничего не нашли
+  keyLabel := UpperCase(Trim(AKeyCaption));
+
+  // это цифра или буква
+  checkKeyLabel(['0'], XK_0);
+  checkKeyLabel(['1'], XK_1);
+  checkKeyLabel(['2'], XK_2);
+  checkKeyLabel(['3'], XK_3);
+  checkKeyLabel(['4'], XK_4);
+  checkKeyLabel(['5'], XK_5);
+  checkKeyLabel(['6'], XK_6);
+  checkKeyLabel(['7'], XK_7);
+  checkKeyLabel(['8'], XK_8);
+  checkKeyLabel(['9'], XK_9);
+
+  checkKeyLabel(['Q'], XK_Q);
+  checkKeyLabel(['W'], XK_W);
+  checkKeyLabel(['E'], XK_E);
+  checkKeyLabel(['R'], XK_R);
+  checkKeyLabel(['T'], XK_T);
+  checkKeyLabel(['Y'], XK_Y);
+  checkKeyLabel(['U'], XK_U);
+  checkKeyLabel(['I'], XK_I);
+  checkKeyLabel(['O'], XK_O);
+  checkKeyLabel(['P'], XK_P);
+
+  checkKeyLabel(['A'], XK_A);
+  checkKeyLabel(['S'], XK_S);
+  checkKeyLabel(['D'], XK_D);
+  checkKeyLabel(['F'], XK_F);
+  checkKeyLabel(['G'], XK_G);
+  checkKeyLabel(['H'], XK_H);
+  checkKeyLabel(['J'], XK_J);
+  checkKeyLabel(['K'], XK_K);
+  checkKeyLabel(['L'], XK_L);
+
+  checkKeyLabel(['Z'], XK_A);
+  checkKeyLabel(['X'], XK_A);
+  checkKeyLabel(['C'], XK_A);
+  checkKeyLabel(['V'], XK_A);
+  checkKeyLabel(['B'], XK_A);
+  checkKeyLabel(['N'], XK_A);
+  checkKeyLabel(['M'], XK_A);
+
+  checkKeyLabel(['VK_LBUTTON', 'ЛКМ'], XK_Pointer_Left);
+  checkKeyLabel(['VK_RBUTTON', 'ПКМ'], XK_Pointer_Right);
+  //checkKeyLabel(['VK_CANCEL','vkCancel'], VK_Cancel);
+  //checkKeyLabel(['VK_MBUTTON','vkMButton'], VK_MButton);
+  //checkKeyLabel(['VK_XBUTTON1', 'vkXButton1'], VK_XButton1);
+  //checkKeyLabel(['VK_XBUTTON2', 'vkXButton2'], VK_XButton2);
+  checkKeyLabel(['VK_BACK', 'Backspace'], XK_Backspace);
+  checkKeyLabel(['VK_TAB', 'Tab'], XK_Tab);
+  checkKeyLabel(['VK_CLEAR', 'vkClear'], XK_Clear);
+  checkKeyLabel(['VK_RETURN', 'ВВОД','Enter'], XK_Return);
+
+  checkKeyLabel(['VK_SHIFT', 'Shift'], XK_Shift_L);
+  checkKeyLabel(['VK_CONTROL', 'Ctrl'], XK_Control_L);
+  checkKeyLabel(['VK_MENU', 'Menu'], XK_Menu);
+  checkKeyLabel(['VK_PAUSE', 'vkPause'], XK_Pause);
+  checkKeyLabel(['VK_CAPITAL', 'Caps Lock'], XK_Caps_Lock);
+  //checkKeyLabel(['VK_KANA', 'vkKana'], VK_Kana);
+  //checkKeyLabel(['VK_HANGUL', 'vkHangul'], VK_Hangul);
+  //checkKeyLabel(['VK_JUNJA', 'vkJunja'], VK_Junja);
+  //checkKeyLabel(['VK_FINAL', 'vkFinal'], VK_Final);
+  //checkKeyLabel(['VK_HANJA', 'vkHanja'], VK_Hanja);
+  //checkKeyLabel(['VK_KANJI', 'vkKanji'], VK_Kanji);
+  //checkKeyLabel(['VK_CONVERT', 'vkConvert'], VK_Convert);
+  //checkKeyLabel(['VK_NONCONVERT', 'vkNonConvert'], VK_NonConvert);
+  //checkKeyLabel(['VK_ACCEPT', 'vkAccept'], VK_Accept);
+  //checkKeyLabel(['VK_MODECHANGE', 'vkModeChange'], VK_ModeChange);
+  checkKeyLabel(['VK_ESCAPE', 'Esc'], XK_Escape);
+  checkKeyLabel(['VK_SPACE', 'ПРОБЕЛ'], XK_Space);
+  checkKeyLabel(['VK_PRIOR', 'Page Up'], XK_Prior);
+  checkKeyLabel(['VK_NEXT', 'Page Down'], XK_Next);
+  checkKeyLabel(['VK_END', 'End'], XK_End);
+  checkKeyLabel(['VK_HOME', 'Home'], XK_Home);
+  checkKeyLabel(['VK_LEFT', 'СТРЕЛКА ЛЕВ'], XK_Left);
+  checkKeyLabel(['VK_UP', 'СТРЕЛКА ВЕРХ'], XK_Up);
+  checkKeyLabel(['VK_RIGHT', 'СТРЕЛКА ПРАВ'], XK_Right);
+  checkKeyLabel(['VK_DOWN', 'СТРЕЛКА НИЗ'], XK_Down);
+  checkKeyLabel(['VK_SELECT', 'vkSelect'], XK_Select);
+  checkKeyLabel(['VK_PRINT', 'vkPrint'], XK_Print);
+  checkKeyLabel(['VK_EXECUTE', 'vkExecute'], XK_Execute);
+  //checkKeyLabel(['VK_SNAPSHOT', 'vkSnapShot'], XK_SnapShot);
+  checkKeyLabel(['VK_INSERT', 'Insert'], XK_Insert);
+  checkKeyLabel(['VK_DELETE', 'Delete'], XK_Delete);
+  checkKeyLabel(['VK_HELP', 'vkHelp'], XK_Help);
+
+  //checkKeyLabel(['VK_LWIN','Win ЛЕВ'], VK_LWin);
+  //checkKeyLabel(['VK_RWIN', 'Win ПРАВ'], VK_RWin);
+  //checkKeyLabel(['VK_APPS', 'vkApps'], VK_Apps);
+  //checkKeyLabel(['VK_SLEEP', 'vkSleep'], VK_Sleep);
+  checkKeyLabel(['VK_NUMPAD0', 'Numpad 0'], XK_KP_0);
+  checkKeyLabel(['VK_NUMPAD1', 'Numpad 1'], XK_KP_1);
+  checkKeyLabel(['VK_NUMPAD2', 'Numpad 2'], XK_KP_2);
+  checkKeyLabel(['VK_NUMPAD3', 'Numpad 3'], XK_KP_3);
+  checkKeyLabel(['VK_NUMPAD4', 'Numpad 4'], XK_KP_4);
+  checkKeyLabel(['VK_NUMPAD5', 'Numpad 5'], XK_KP_5);
+  checkKeyLabel(['VK_NUMPAD6', 'Numpad 6'], XK_KP_6);
+  checkKeyLabel(['VK_NUMPAD7', 'Numpad 7'], XK_KP_7);
+  checkKeyLabel(['VK_NUMPAD8', 'Numpad 8'], XK_KP_8);
+  checkKeyLabel(['VK_NUMPAD9', 'Numpad 9'], XK_KP_9);
+
+  //checkKeyLabel(['VK_MULTIPLY', 'vkMultiply'], VK_Multiply); //106
+  //checkKeyLabel(['VK_ADD', 'vkAdd'], VK_Add); //107
+  //checkKeyLabel(['VK_SEPARATOR', 'vkSeparator'], VK_Separator); //108
+  //checkKeyLabel(['VK_SUBTRACT', 'vkSubtract'], VK_Subtract); //109
+  //checkKeyLabel(['VK_DECIMAL', 'vkDecimal'], VK_Decimal); //110
+  //checkKeyLabel(['VK_DIVIDE', 'vkDivide'], VK_Divide); //111
+  checkKeyLabel(['VK_F1', 'F1'], XK_F1);
+  checkKeyLabel(['VK_F2', 'F2'], XK_F2);
+  checkKeyLabel(['VK_F3', 'F3'], XK_F3);
+  checkKeyLabel(['VK_F4', 'F4'], XK_F4);
+  checkKeyLabel(['VK_F5', 'F5'], XK_F5);
+  checkKeyLabel(['VK_F6', 'F6'], XK_F6);
+  checkKeyLabel(['VK_F7', 'F7'], XK_F7);
+  checkKeyLabel(['VK_F8', 'F8'], XK_F8);
+  checkKeyLabel(['VK_F9', 'F9'], XK_F9);
+  checkKeyLabel(['VK_F10', 'F10'], XK_F10);
+  checkKeyLabel(['VK_F11', 'F11'], XK_F11);
+  checkKeyLabel(['VK_F12', 'F12'], XK_F12);
+  checkKeyLabel(['VK_F13', 'F13'], XK_F13);
+  checkKeyLabel(['VK_F14', 'F14'], XK_F14);
+  //checkKeyLabel(['VK_F15', 'F15'], VK_F15);
+  //checkKeyLabel(['VK_F16', 'F16'], VK_F16);
+  //checkKeyLabel(['VK_F17', 'F17'], VK_F17);
+  //checkKeyLabel(['VK_F18', 'F18'], VK_F18);
+  //checkKeyLabel(['VK_F19', 'F19'], VK_F19);
+  //checkKeyLabel(['VK_F20', 'F20'], VK_F20);
+  //checkKeyLabel(['VK_F21', 'F21'], VK_F21);
+  //checkKeyLabel(['VK_F22', 'F22'], VK_F22);
+  //checkKeyLabel(['VK_F23', 'F23'], VK_F23);
+  //checkKeyLabel(['VK_F24', 'F24'], VK_F24);
+  checkKeyLabel(['VK_NUMLOCK', 'Num Lock'], XK_Num_Lock);
+  checkKeyLabel(['VK_SCROLL', 'Scroll Lock'], XK_Scroll_Lock);
+
+
+  // VK_L & VK_R - left and right Alt, Ctrl and Shift virtual keys.
+  //  Used only as parameters to GetAsyncKeyState() and GetKeyState().
+  //  No other API or message will distinguish left and right keys in this way.
+  //checkKeyLabel(['VK_LSHIFT', 'Shift ЛЕВ'], VK_LShift); //160
+  //checkKeyLabel(['VK_RSHIFT', 'Shift ПРАВ'], VK_RShift); //161
+  //checkKeyLabel(['VK_LCONTROL', 'Ctrl ЛЕВ'], VK_LControl); //162
+  //checkKeyLabel(['VK_RCONTROL', 'Ctrl ПРАВ'], VK_RControl); //163
+  //checkKeyLabel(['VK_LMENU', 'Menu ЛЕВ'], VK_LMenu); //163
+  //checkKeyLabel(['VK_RMENU', 'Menu ПРАВ'], VK_RMenu); //165
+
+  //
+  //checkKeyLabel(['VK_BROWSER_BACK', 'VK_BROWSER_BACK'], VK_BROWSER_BACK);// 166;
+  //checkKeyLabel(['VK_BROWSER_FORWARD', 'VK_BROWSER_FORWARD'], VK_BROWSER_FORWARD);// 167;
+  //checkKeyLabel(['VK_BROWSER_REFRESH', 'VK_BROWSER_REFRESH'], VK_BROWSER_REFRESH);// 168;
+  //checkKeyLabel(['VK_BROWSER_STOP', 'VK_BROWSER_STOP'], VK_BROWSER_STOP);// 169;
+  //checkKeyLabel(['VK_BROWSER_SEARCH', 'VK_BROWSER_SEARCH'], VK_BROWSER_SEARCH);// 170;
+  //checkKeyLabel(['VK_BROWSER_FAVORITES', 'VK_BROWSER_FAVORITES'], VK_BROWSER_FAVORITES);// 171;
+  //checkKeyLabel(['VK_BROWSER_HOME', 'VK_BROWSER_HOME'], VK_BROWSER_HOME);// 172;
+  //checkKeyLabel(['VK_VOLUME_MUTE', 'VK_VOLUME_MUTE'], VK_VOLUME_MUTE);// 173;
+  //checkKeyLabel(['VK_VOLUME_DOWN', 'VK_VOLUME_DOWN'], VK_VOLUME_DOWN);// 174;
+  //checkKeyLabel(['VK_VOLUME_UP', 'VK_VOLUME_UP'], VK_VOLUME_UP);// 175;
+  //checkKeyLabel(['VK_MEDIA_NEXT_TRACK', 'VK_MEDIA_NEXT_TRACK'], VK_MEDIA_NEXT_TRACK);// 176;
+  //checkKeyLabel(['VK_MEDIA_PREV_TRACK', 'VK_MEDIA_PREV_TRACK'], VK_MEDIA_PREV_TRACK);// 177;
+  //checkKeyLabel(['VK_MEDIA_STOP', 'VK_MEDIA_STOP'], VK_MEDIA_STOP);// 178;
+  //checkKeyLabel(['VK_MEDIA_PLAY_PAUSE', 'VK_MEDIA_PLAY_PAUSE'], VK_MEDIA_PLAY_PAUSE);// 179;
+  //checkKeyLabel(['VK_LAUNCH_MAIL', 'VK_LAUNCH_MAIL'], VK_LAUNCH_MAIL);// 180;
+  //checkKeyLabel(['VK_LAUNCH_MEDIA_SELECT', 'VK_LAUNCH_MEDIA_SELECT'], VK_LAUNCH_MEDIA_SELECT);// 181;
+  //checkKeyLabel(['VK_LAUNCH_APP1', 'VK_LAUNCH_APP1'], VK_LAUNCH_APP1);// 182;
+  //checkKeyLabel(['VK_LAUNCH_APP2', 'VK_LAUNCH_APP2'], VK_LAUNCH_APP2);// 183;
+
+  //
+  //checkKeyLabel(['VK_OEM_1', 'VK_OEM_1'], VK_OEM_1);// 186;
+  //checkKeyLabel(['VK_OEM_PLUS', 'VK_OEM_PLUS'], VK_OEM_PLUS);// 187;
+  //checkKeyLabel(['VK_OEM_COMMA', 'VK_OEM_COMMA'], VK_OEM_COMMA);// 188;
+  //checkKeyLabel(['VK_OEM_MINUS', 'VK_OEM_MINUS'], VK_OEM_MINUS);// 189;
+  //checkKeyLabel(['VK_OEM_PERIOD', 'VK_OEM_PERIOD'], VK_OEM_PERIOD);// 190;
+  //checkKeyLabel(['VK_OEM_2', 'VK_OEM_2'], VK_OEM_2);// 191;
+  //checkKeyLabel(['VK_OEM_3', 'VK_OEM_3'], VK_OEM_3);// 192;
+  //checkKeyLabel(['VK_OEM_4', 'VK_OEM_4'], VK_OEM_4);// 219;
+  //checkKeyLabel(['VK_OEM_5', 'VK_OEM_5'], VK_OEM_5);// 220;
+  //checkKeyLabel(['VK_OEM_6', 'VK_OEM_6'], VK_OEM_6);// 221;
+  //checkKeyLabel(['VK_OEM_7', 'VK_OEM_7'], VK_OEM_7);// 222;
+  //checkKeyLabel(['VK_OEM_8', 'VK_OEM_8'], VK_OEM_8);// 223;
+  //checkKeyLabel(['VK_OEM_102', 'VK_OEM_102'], VK_OEM_102);// 226;
+  //checkKeyLabel(['VK_PACKET', 'VK_PACKET'], VK_PACKET);// 231
+
+  //
+  //checkKeyLabel(['VK_PROCESSKEY', 'vkProcessKey'], XK_ProcessKey); //229
+  //checkKeyLabel(['VK_ATTN', 'vkAttn'], VK_Attn); //246
+  //checkKeyLabel(['VK_CRSEL', 'vkCrsel'], VK_Crsel); //247
+  //checkKeyLabel(['VK_EXSEL', 'vkExsel'], VK_Exsel); //248
+  //checkKeyLabel(['VK_EREOF', 'vkErEof'], VK_ErEof); //249
+  //checkKeyLabel(['VK_PLAY', 'vkPlay'], VK_Play); //250
+  //checkKeyLabel(['VK_ZOOM', 'vkZoom'], VK_Zoom); //251
+  //checkKeyLabel(['VK_NONAME', 'vkNoName'], VK_NoName); //252
+  //checkKeyLabel(['VK_PA1', 'vkPA1'], VK_PA1); //253
+  //checkKeyLabel(['VK_OEM_CLEAR', 'vkOemClear'], VK_Oem_Clear); //254
+end;
+{$ELSE}
+function VkStringToCode(AKeyCaption: string): Integer;
 // возвращает численный код виртуальной клавиши по его текстовому названию
 // одной клавише может быть назначено несколько названий, например на разных языках
 var
@@ -319,6 +557,7 @@ begin
   checkKeyLabel(['VK_PA1', 'vkPA1'], VK_PA1); //253
   checkKeyLabel(['VK_OEM_CLEAR', 'vkOemClear'], VK_Oem_Clear); //254
 end;
+{$ENDIF}
 //--------------------------------------------------------------------------
 // ФУНКЦИЯ ДЛЯ ОТЛАДКИ - проверить, что каждой клавише в property_keySet присвоен код
 function TUserKeybrd.testKeySetAssignment(slist1: TStringList): Boolean;
@@ -375,7 +614,6 @@ begin
           for i:=0 to Length(property_KeySet.Selection)-1 do begin
             str1 := slist1.Strings[property_KeySet.Selection[i]];
             keyCodesArray[i] := VkStringToCode(str1);
-
             // дополнительно проверяем, что клавише назначен код
             if(keyCodesArray[i]=0) then begin
               ErrorEvent(txtKeyUnknown1 + str1 + txtKeyUnknown2,msError, VisualObject);
@@ -390,13 +628,7 @@ begin
 
       i_GetCount:
         begin
-          {$IFNDEF FPC}
           cY[0].Dim:=SetDim([keyCodesArray.Count]);
-          {$ELSE}
-          cY[0].Dim:=SetDim([3]);
-          if not Assigned(kbrd) then kbrd := TGlobalKbrd.Create;
-
-          {$ENDIF}
         end
   else
     Result:=inherited InfoFunc(Action,aParameter);
@@ -409,7 +641,6 @@ var
   keyResult: Boolean;
   i: Integer;
   str1: ansistring;
-  FKeyResult:array[0..2] of Boolean;
 begin
   Result := r_Success;
 
@@ -422,20 +653,14 @@ begin
       begin
         {$IFDEF FPC}
         kbrd.refresh;
-        FkeyResult[0]:=kbrd.isKeyPressed(XK_Left);
-        FkeyResult[1]:=kbrd.isKeyPressed(XK_Up);
-        FkeyResult[2]:=kbrd.isKeyPressed(XK_T);
-
-        for i:=0 to 2 do begin
-          keyResult := FkeyResult[i];
+        for i:=0 to keyCodesArray.Count-1 do begin
+          keyResult := kbrd.isKeyPressed((keyCodesArray[i]));
           if keyResult then Y[0][i] := 1.
                        else Y[0][i] := 0.;
           end;
         {$ELSE}
         for i:=0 to keyCodesArray.Count-1 do begin
           keyResult := GetAsyncKeyState(Integer(keyCodesArray[i]))<>0;
-          //keyResult := GetKeyState((keyCodesArray[i]))<0;
-          //str1 := TTYName;
           if keyResult then Y[0][i] := 1.
                        else Y[0][i] := 0.;
           end;
