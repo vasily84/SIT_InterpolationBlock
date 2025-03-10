@@ -645,7 +645,12 @@ begin
   Result := r_Success;
 
   case Action of
-    f_InitState,
+    f_InitState:
+    {$IFNDEF FPC}
+      for i:=0 to keyCodesArray.Count-1 do begin
+          GetAsyncKeyState(Integer(keyCodesArray[i])); // вычитываем клавиши - очищаем буфер
+          end;
+    {$ENDIF}
     f_RestoreOuts,
     f_UpdateOuts,
     f_UpdateJacoby,

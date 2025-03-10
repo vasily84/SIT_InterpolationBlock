@@ -216,23 +216,9 @@ var
 begin
   // копирование одномерного массива
   TExtArray_cpy(Ftable, prop_F);
-  {Ftable.Count := property_F.Count;
-  for i:=0 to property_F.Count-1 do begin
-    Ftable[i]:= property_F[i];
-    end;}
-
 
   // копирование многомерного массива
   TExtArray2_cpy(Xtable,prop_X);
-  {
-  Xtable.ChangeCount(property_X.CountX, property_X.GetMaxCountY);
-  for i:=0 to property_X.CountX-1 do begin
-    Xtable[i].Count := property_X[i].Count;
-    for j:=0 to property_X[i].Count-1 do begin
-      Xtable[i][j]:= property_X[i][j];
-      end;
-    end;
-  }
   Result := True;
 end;
 

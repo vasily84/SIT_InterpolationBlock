@@ -39,7 +39,8 @@ uses
   InterpolationBlocks in 'InterpolationBlocks.pas',
   Keybrd in 'Keybrd.pas',
   NewNDInterpol in 'NewNDInterpol.pas',
-  TExtArray_Utils in 'TExtArray_Utils.pas';
+  TExtArray_Utils in 'TExtArray_Utils.pas',
+  Unit_TFromTable2dNew in 'Unit_TFromTable2dNew.pas';
 
 {$R *.res}
 

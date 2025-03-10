@@ -225,13 +225,13 @@ begin
     exit;
     end;
 
-  if StrEqu(ParamName,'Xi_array') then begin
+  if StrEqu(ParamName,'X_arr') then begin
     Result:=NativeInt(prop_Xi_arr);
     DataType:=dtDoubleArray;
     exit;
     end;
 
-  if StrEqu(ParamName,'Fi_array') then begin
+  if StrEqu(ParamName,'F_arr') then begin
     Result:=NativeInt(prop_Fi_arr);
     DataType:=dtDoubleArray;
     exit;
@@ -443,10 +443,14 @@ begin
     end;
   end;
 
+
   // проверяем, есть ли в аргументах Х дубликаты
   if TExtArray_HasDuplicates(Xi_data) then begin
     ErrorEvent(txtXiduplicates, msWarning, VisualObject);
     end;
+
+  // TODO - сейчас с дубликатами дуркует.
+  // Необходимо добавить функцию исключения дубликатов из кода
 
   // проверяем, упорядочены ли точки. При необходимости - упорядочиваем
   if (InputMode < 3)and(TExtArray_IsOrdered(Xi_data)=False) then begin

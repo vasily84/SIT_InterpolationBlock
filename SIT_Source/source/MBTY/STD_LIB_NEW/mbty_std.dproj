@@ -1154,6 +1154,7 @@
         <DCCReference Include="Keybrd.pas"/>
         <DCCReference Include="NewNDInterpol.pas"/>
         <DCCReference Include="TExtArray_Utils.pas"/>
+        <DCCReference Include="Unit_TFromTable2dNew.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
