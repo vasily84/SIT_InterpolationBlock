@@ -14,8 +14,7 @@ unit Interpol_Blocks;
 
  //создан на основе оригинальной библиотеки mbty_std
  //реализация вариантов одномерной, двумерной и многомерной интерполяции,
- //где исходные данные могут быть
- //заданы в виде констант - векторов и матриц, и в виде внешних файлов.
+ //где исходные данные могут быть заданы по разному - через свойства, файлы, или порты.
 
 interface
 
@@ -79,7 +78,7 @@ type
 
 ///////////////////////////////////////////////////////////////////////////////
 //Двумерная линейная интерполяция по таблице из файла
- type
+type
   TInterpolBlockXY = class(TRunObject)
   protected
     table: TTable2;
@@ -111,9 +110,10 @@ type
   end;
 
 /////////////////////////////////////////////////////////////////////
- //Блок многомерной линейной интерполяции
- TInterpolBlockMultiDim = class(TRunObject)
- public
+//Блок многомерной линейной интерполяции
+type
+  TInterpolBlockMultiDim = class(TRunObject)
+  public
    // это свойства
    ExtrapolationType: NativeInt; // ПЕРЕЧИСЛЕНИЕ тип экстраполяции при аргументе за пределами границ
    InterpolationType: NativeInt; // ПЕРЕЧИСЛЕНИЕ метод интерполяции
@@ -791,9 +791,9 @@ begin
 end;
 
 /////////////////////////////////////////////////////////////////////////////
-{*******************************************************************************
-            Двумерная линейная интерполяция по таблице
-*******************************************************************************}
+//****************************************************************************
+//            Двумерная линейная интерполяция по таблице
+//****************************************************************************
 constructor TInterpolBlockXY.Create;
 begin
   inherited;
@@ -812,7 +812,7 @@ begin
   FreeAndNil(prop_DataTable);
   inherited;
 end;
-
+//---------------------------------------------------------------------------
 function TInterpolBlockXY.GetParamID;
 begin
   Result:=inherited GetParamID(ParamName,DataType,IsConst);
@@ -835,6 +835,7 @@ begin
     DataType:=dtMatrix;
     exit;
     end;
+
   if StrEqu(ParamName,'interp_method') then begin
     Result:=NativeInt(@InterpolationType);
     DataType:=dtInteger;
@@ -872,6 +873,7 @@ if StrEqu(ParamName,'fileNameVals') then begin
     exit;
     end;
 
+  ErrorEvent(txtParamUnknown1+ParamName+txtParamUnknown2, msWarning, VisualObject);
 end;
 
 //----------------------------------------------------------------------------
@@ -994,9 +996,13 @@ begin
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.LoadDataFrom2Files(): Boolean;
+var
+  a,b: Boolean;
 begin
-  Result := False;
+  Result:=False;
+
 end;
+
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.LoadDataFromFile(): Boolean;
 begin
@@ -1190,93 +1196,95 @@ begin
 
   case Action of
     i_GetPropErr: // проверка размерностей
-                  begin
-                    if not LoadData then begin
-                          Result:=r_Fail;
-                          exit;
-                          end;
+      begin
+        if not LoadData then begin
+              Result:=r_Fail;
+              exit;
+              end;
 
-                    if Xtable.CountX <= 0 then begin
-                      ErrorEvent(txtDimensionsNotDefined,msError,VisualObject);
-                      Result:=r_Fail;
-                      exit;
-                      end;
+        if Xtable.CountX <= 0 then begin
+          ErrorEvent(txtDimensionsNotDefined,msError,VisualObject);
+          Result:=r_Fail;
+          exit;
+          end;
 
-                    //Вычисляем суммарную размерность
-                    p:=Xtable[0].Count;
-                    for i := 1 to Xtable.CountX - 1 do p:=p*Xtable[i].Count;
+        //Вычисляем суммарную размерность
+        p:=Xtable[0].Count;
+        for i := 1 to Xtable.CountX - 1 do p:=p*Xtable[i].Count;
 
-                    //Проверяем всё ли задано в массиве val_
-                    if Ftable.Count > 0 then begin
-                      if Ftable.Count < p then begin
-                         ErrorEvent(txtOrdinatesDefineIncomplete+IntToStr(p),msWarning,VisualObject);
-                         Result := r_Fail;
-                         exit;
-                         end;
-                      end;
-                  end;
+        //Проверяем всё ли задано в массиве val_
+        if Ftable.Count > 0 then begin
+          if Ftable.Count < p then begin
+             ErrorEvent(txtOrdinatesDefineIncomplete+IntToStr(p),msWarning,VisualObject);
+             Result := r_Fail;
+             exit;
+             end;
+          end;
+      end;
 
-    i_GetCount:   begin
-                  if not LoadData then begin
-                    Result:=r_Fail;
-                    exit;
-                    end;
-                    //Размерность выхода = размерность входа делённая на размерность матрицы абсцисс
-                    cY[0].Dim:= SetDim([ GetFullDim(cU[0].Dim) div Xtable.CountX ]);
-                    //Условие кратности рзмерности
-                    nn := cY[0].Dim[0]*Xtable.CountX;
-                    if GetFullDim(cU[0].Dim) <> nn then cU[0].Dim:=SetDim([nn]);
-                  end
-  else
-    Result:=inherited InfoFunc(Action,aParameter);
+    i_GetCount:
+      begin
+        if not LoadData then begin
+          Result:=r_Fail;
+          exit;
+          end;
+          //Размерность выхода = размерность входа делённая на размерность матрицы абсцисс
+          cY[0].Dim:= SetDim([ GetFullDim(cU[0].Dim) div Xtable.CountX ]);
+          //Условие кратности рзмерности
+          nn := cY[0].Dim[0]*Xtable.CountX;
+          if GetFullDim(cU[0].Dim) <> nn then cU[0].Dim:=SetDim([nn]);
+      end
+    else
+      Result:=inherited InfoFunc(Action,aParameter);
   end;
 end;
-
+//--------------------------------------------------------------------------
 function    TInterpolBlockMultiDim.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
  var
     i,j: integer;
 begin
   Result := r_Success;
   case Action of
-    f_InitObjects:    begin
-                        if not LoadData then begin
-                          Result:=r_Fail;
-                          exit;
-                          end;
+    f_InitObjects:
+      begin
+        if not LoadData then begin
+          Result:=r_Fail;
+          exit;
+          end;
 
-                          //Подчитываем к-во точек по размерности входа
-                        tmpXp.ChangeCount(GetFullDim(cU[0].Dim) div Xtable.CountX,Xtable.CountX);
+          //Подчитываем к-во точек по размерности входа
+        tmpXp.ChangeCount(GetFullDim(cU[0].Dim) div Xtable.CountX,Xtable.CountX);
 
-                        //Инициализируем временные массивы
-                        u_.Count  := Xtable.CountX;
-                        v_.Count  := 1 shl (Xtable.CountX);
-                        ad_.Count := 1 shl (Xtable.CountX);
-                        k_.Count  := Xtable.CountX;
-                      end;
+        //Инициализируем временные массивы
+        u_.Count  := Xtable.CountX;
+        v_.Count  := 1 shl (Xtable.CountX);
+        ad_.Count := 1 shl (Xtable.CountX);
+        k_.Count  := Xtable.CountX;
+      end;
+
     f_RestoreOuts,
     f_InitState,
     f_UpdateOuts,
     f_UpdateJacoby,
-    f_GoodStep      : begin
+    f_GoodStep:
+      begin
+        j:=0;
+        // копируем аргумент из входного вектора U во временное хранилище
+        for i := 0 to tmpXp.CountX - 1 do begin
+          Move(U[0].Arr^[j],tmpXp[i].Arr^[0],tmpXp[i].Count*SizeOfDouble);
+          inc(j,tmpXp[i].Count);
+        end;
 
-                        j:=0;
-                        // копируем аргумент из входного вектора U во временное хранилище
-                        for i := 0 to tmpXp.CountX - 1 do begin
-                          Move(U[0].Arr^[j],tmpXp[i].Arr^[0],tmpXp[i].Count*SizeOfDouble);
-                          inc(j,tmpXp[i].Count);
-                        end;
 
+        case InterpolationType of
+          1: nstep_interp(Xtable,Ftable,tmpXp,Y[0],ExtrapolationType,k_);
+        else
+          nlinear_interp(Xtable,Ftable,tmpXp,Y[0],ExtrapolationType,u_,v_,ad_,k_);
+        end;
 
-                        case InterpolationType of
-                          1: nstep_interp(Xtable,Ftable,tmpXp,Y[0],ExtrapolationType,k_);
-                        else
-                          nlinear_interp(Xtable,Ftable,tmpXp,Y[0],ExtrapolationType,u_,v_,ad_,k_);
-                        end;
-
-                      end;
-  end
+        end;
+      end
 end;
-
 //--------------------------------------------------------------------------
 function TInterpolBlockMultiDim.LoadData(): Boolean;
 begin
@@ -1287,15 +1295,21 @@ begin
 end;
 //---------------------------------------------------------------------------
 function TInterpolBlockMultiDim.LoadDataFrom2Files(): Boolean;
-var
-  a,b: Boolean;
 begin
-  a := Load_TExtArray2_FromBracketFile(FileNameArgs,Xtable);
-  b := Load_TExtArray_FromBracketFile(FileNameVals,Ftable);
+  if not Load_TExtArray2_FromBracketFile(FileNameArgs,Xtable) then begin
+    ErrorEvent(txtFileError1+FileNameArgs+txtFileError2,msError,VisualObject);
+    Result:=False;
+    exit;
+    end;
 
-  Result := a and b;
+  if not Load_TExtArray_FromBracketFile(FileNameVals,Ftable) then begin
+    ErrorEvent(txtFileError1+FileNameArgs+txtFileError2,msError,VisualObject);
+    Result:=False;
+    exit;
+    end;
+
+  Result := True;
 end;
-
 //---------------------------------------------------------------------------
 function TInterpolBlockMultiDim.LoadDataFromProperties(): Boolean;
 // загрузить данные из файлов в расчетные Xarg Fval
@@ -1304,7 +1318,6 @@ begin
   TExtArray2_cpy(Xtable,prop_X);
   Result := True;
 end;
-
 //---------------------------------------------------------------------------
 function    TInterpolBlockMultiDim.GetParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;
 begin
@@ -1353,7 +1366,7 @@ begin
     exit;
     end;
 
-  ErrorEvent('параметр '+ParamName+' в блоке Многомерной интерполяции не найден', msWarning, VisualObject);
+  ErrorEvent(txtParamUnknown1+ParamName+txtParamUnknown2, msWarning, VisualObject);
 end;
 
 end.
