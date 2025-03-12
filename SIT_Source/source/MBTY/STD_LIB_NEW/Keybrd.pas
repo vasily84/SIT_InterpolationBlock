@@ -15,8 +15,7 @@ unit Keybrd;
 interface
 
 uses {$IFNDEF FPC}Windows,{$ELSE}x,xlib,keysym,{$ENDIF}
-     Classes, MBTYArrays, DataTypes, DataObjts, SysUtils, abstract_im_interface, RunObjts,
-     mbty_std_consts;
+     Classes, DataTypes, DataObjts, SysUtils, abstract_im_interface, RunObjts;
 
 {$IFDEF FPC}
 // опрос клавиатуры под Линух на основе Xlib
@@ -125,22 +124,12 @@ begin
   inherited;
   keyCodesArray := TIntArray.Create(1);
   property_KeySet := TMultiSelect.Create(Self);
-  {$IFDEF FPC}
-  if not Assigned(kbrd) then kbrd := TGlobalKbrd.Create;
-  Inc(kbrd.countRef);
-  {$ENDIF}
 end;
 
 destructor  TUserKeybrd.Destroy;
 begin
   FreeAndNil(keyCodesArray);
   FreeAndNil(property_KeySet);
-  {$IFDEF FPC}
-  if Assigned(kbrd) then begin
-    Dec(kbrd.countRef);
-    if(kbrd.countRef=0) then FreeAndNil(kbrd);
-    end;
-  {$ENDIF}
   inherited;
 end;
 
@@ -640,13 +629,12 @@ function TUserKeybrd.RunFunc(var at,h: RealType; Action: Integer):NativeInt;
 var
   keyResult: Boolean;
   i: Integer;
-  str1: ansistring;
 begin
   Result := r_Success;
 
   case Action of
-    f_InitState:
     {$IFNDEF FPC}
+    f_InitState:
       for i:=0 to keyCodesArray.Count-1 do begin
           GetAsyncKeyState(Integer(keyCodesArray[i])); // вычитываем клавиши - очищаем буфер
           end;
@@ -689,6 +677,11 @@ begin
 end;
 
 //===========================================================================
-
+{$IFDEF FPC}
+initialization
+  if not Assigned(kbrd) then kbrd := TGlobalKbrd.Create;
+finalization
+  if Assigned(kbrd) then FreeAndNil(kbrd);
+{$ENDIF}
 ////////////////////////////////////////////////////////////////////////////////
 end.
