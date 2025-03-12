@@ -40,7 +40,7 @@ implementation
 
 uses Src, Dif, Operations, Nonlines, Discrete, Vectors, Func_blocks, Keys,
      Logs, Trigger,Timers,Data_blocks, Stat_Blocks, lae_objects, uOptimizers,
-     elec_base, uCrossZero, InterpolationBlocks, Keybrd, NewNDInterpol,Unit_TFromTable2dNew;
+     elec_base, uCrossZero, Interpol_Blocks, Keybrd;
 
 function  Init:boolean;
 begin
@@ -308,11 +308,11 @@ const
     (Name:'TTrigger_SCR';     RunClass:TTrigger_SCR),
     (Name:'TTrigger_JK';      RunClass:TTrigger_JK),
     //
-
-     (Name:'TInterpolationBlock1';      RunClass:TInterpolationBlock1),
-     (Name:'TUserKeybrd';      RunClass:TUserKeybrd),
-     (Name:'TNewNDInterpol';      RunClass:TInterpolBlockMultiDim),
-      (Name:'TFromTable2DNew';      RunClass:TFromTable2DNew)
+    (Name:'TUserKeybrd';      RunClass:TUserKeybrd),
+    //
+     (Name:'TInterpolationBlock1';      RunClass:TInterpolBlock1d),
+     (Name:'TInterpolBlockMultiDim';      RunClass:TInterpolBlockMultiDim),
+     (Name:'TInterpolBlockXY';      RunClass:TInterpolBlockXY)
   );
 
 

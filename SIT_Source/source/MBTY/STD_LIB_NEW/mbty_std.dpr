@@ -36,10 +36,10 @@ uses
   trigger in 'trigger.pas',
   Vectors in 'Vectors.pas',
   uOptimizers in 'uOptimizers.pas',
-  InterpolationBlocks in 'InterpolationBlocks.pas',
+  Interpol_Blocks in 'Interpol_Blocks.pas',
   Keybrd in 'Keybrd.pas',
   NewNDInterpol in 'NewNDInterpol.pas',
-  TExtArray_Utils in 'TExtArray_Utils.pas',
+  RealArrays_Utils in 'RealArrays_Utils.pas',
   Unit_TFromTable2dNew in 'Unit_TFromTable2dNew.pas';
 
 {$R *.res}

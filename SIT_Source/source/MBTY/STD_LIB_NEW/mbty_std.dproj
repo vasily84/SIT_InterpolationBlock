@@ -1150,10 +1150,10 @@
         <DCCReference Include="trigger.pas"/>
         <DCCReference Include="Vectors.pas"/>
         <DCCReference Include="uOptimizers.pas"/>
-        <DCCReference Include="InterpolationBlocks.pas"/>
+        <DCCReference Include="Interpol_Blocks.pas"/>
         <DCCReference Include="Keybrd.pas"/>
         <DCCReference Include="NewNDInterpol.pas"/>
-        <DCCReference Include="TExtArray_Utils.pas"/>
+        <DCCReference Include="RealArrays_Utils.pas"/>
         <DCCReference Include="Unit_TFromTable2dNew.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
