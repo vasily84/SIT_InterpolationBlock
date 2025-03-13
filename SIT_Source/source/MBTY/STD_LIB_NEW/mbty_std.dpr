@@ -38,9 +38,7 @@ uses
   uOptimizers in 'uOptimizers.pas',
   Interpol_Blocks in 'Interpol_Blocks.pas',
   Keybrd in 'Keybrd.pas',
-  NewNDInterpol in 'NewNDInterpol.pas',
-  RealArrays_Utils in 'RealArrays_Utils.pas',
-  Unit_TFromTable2dNew in 'Unit_TFromTable2dNew.pas';
+  RealArrays_Utils in 'RealArrays_Utils.pas';
 
 {$R *.res}
 
