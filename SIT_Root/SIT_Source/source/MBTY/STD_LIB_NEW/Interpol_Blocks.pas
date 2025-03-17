@@ -35,6 +35,7 @@ type
 
     prop_X_arr: TExtArray; // точки аргументов Xi функции, если она задана через свойства объекта
     prop_F_arr: TExtArray; // точки значений Fi функции, если она задана через свойства объекта
+    DataLength: Integer;
 
     //ПЕРЕЧИСЛЕНИЕ тип интерполяции
     //0:Кусочно-постоянная 1:Линейная 2:Сплайн Кубический 3: Лагранж
@@ -92,13 +93,17 @@ type
     prop_X1_arr, prop_X2_arr: TExtArray;
     prop_DataTable: TExtArray2;
 
+    DataLength: Integer;
+    // функции загрузки значений в table. Возвращает True при успешной загрузке
     function LoadDataFromPorts(): Boolean;
     function LoadDataFromProperties(): Boolean;
     function LoadDataFrom2Files():Boolean;
-    function LoadDataFromFile(): Boolean;
+    function LoadDataFromCsv(): Boolean;
     function LoadDataFromJSON(): Boolean;
     function LoadData(): Boolean;
 
+    // общая проверка размерностей введенных данных
+    function CheckData(): Boolean;
 
     function checkXY_Range(var aX1,aX2: RealType;var aZvalue: RealType): Boolean;
     function InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
@@ -135,10 +140,13 @@ type
    u_,v_:         TExtArray;
    ad_,k_:        TIntArray;
 
+   DataLength: Integer;// длина загруженных данных
    function LoadDataFromProperties(): Boolean;
-   function LoadDataFromFile(): Boolean;
    function LoadDataFromJSON(): Boolean;
    function LoadData(): Boolean;
+
+   // общая проверка размерностей введенных данных
+   function CheckData(): Boolean;
 
    function       InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
    function       RunFunc(var at,h : RealType;Action:Integer):NativeInt;override;
@@ -341,19 +349,22 @@ function TInterpolBlock1d.LoadDataFromProperties(): Boolean;
 begin
   Result := True;
 
+  {
   if prop_F_arr.Count<>Fdim*prop_X_arr.Count then begin //проверка корректности входных размеров
     ErrorEvent(txtFiXiDimError, msError, VisualObject);
     Result := False;
     exit;
     end;
-
+  }
   // копируем
   TExtArray_cpy(Xarr_data, prop_X_arr);
   TExtArray_cpy(Farr_data, prop_F_arr);
+
   NPoints := Xarr_data.Count;
+  DataLength := Farr_data.Count;
+
 end;
 //---------------------------------------------------------------------------
-
 function TInterpolBlock1d.LoadDataFrom2Files(): Boolean;
 label
   OnExit;
@@ -1006,13 +1017,14 @@ end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.LoadDataFromPorts(): Boolean;
 var
-  i,j,k,M,N: Integer;
+  i,j,M,N: Integer;
   f: RealType;
 begin
   N := U[ROW_ARGS_ARR].Count;
   M := U[COL_ARGS_ARR].Count;
+
   // TODO - проверка размерности
-  if (M*N<>U[FUNCS_TABLE].Count) then begin
+  if (M*N>U[FUNCS_TABLE].Count) then begin
     Result:=False;
     exit;
     end;
@@ -1024,11 +1036,12 @@ begin
   TExtArray_cpy(table.px2, U[COL_ARGS_ARR]);
 
   table.py.ChangeCount(N,M);
-  k:=0;
+  DataLength:=0;
+
   for i:=0 to N-1 do begin
     for j:=0 to M-1 do begin
-      f := U[FUNCS_TABLE].Arr[k];
-      Inc(k);
+      f := U[FUNCS_TABLE].Arr[DataLength];
+      Inc(DataLength);
       table.py[i][j]:=f;
       end;
     end;
@@ -1037,17 +1050,7 @@ begin
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.LoadDataFromProperties(): Boolean;
-var
-  b1,b2: Boolean;
 begin
-  b1 := (prop_X1_arr.Count <> prop_DataTable.CountX);
-  b2:=  (prop_X2_arr.Count <> prop_DataTable.GetMaxCountY);
-
-  if (b1 or b2) then begin // некорректные размерности
-    Result:=False;
-    exit;
-    end;
-
   table.Arg1Count := prop_X1_arr.Count;
   table.Arg2Count := prop_X2_arr.Count;
 
@@ -1055,12 +1058,12 @@ begin
   TExtArray_cpy(table.px2, prop_X2_arr);
   TExtArray2_cpy(table.py, prop_DataTable);
 
+  // TODO !! - переделать в нормальное копирование с учетом размеров.
+  DataLength := table.py.CountX*table.py.GetMaxCountY;
   Result := True;
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.LoadDataFrom2Files(): Boolean;
-var
-  a,b: Boolean;
 begin
   Result:=False;
 end;
@@ -1071,10 +1074,11 @@ var
   jso: TJSONObject;
   jsv: TJSONValue;
   jarr: TJSONArray;
-  i,j,k,axisCount,jarrCount,x1count,x2count: Integer;
+  i,j,axisCount,jarrCount,x1count,x2count: Integer;
   arrValue: TJSONValue;
 begin
   Result := True;
+  DataLength:=0;
   jso := nil;
 
   try
@@ -1087,7 +1091,7 @@ begin
     x1Count:=jarr.Count;
     table.Arg1Count := x1Count;
 
-    for j := 0 to jarrCount - 1 do begin
+    for j := 0 to x1Count - 1 do begin
       arrValue := jarr.Items[j];
       table.px1[j]:=StrToFloat(arrValue.AsType<string>);
       end;
@@ -1098,7 +1102,7 @@ begin
     x2Count:=jarr.Count;
     table.Arg2Count := x2Count;
 
-    for j := 0 to jarrCount - 1 do begin
+    for j := 0 to x2Count - 1 do begin
       arrValue := jarr.Items[j];
       table.px2[j]:=StrToFloat(arrValue.AsType<string>);
       end;
@@ -1107,16 +1111,19 @@ begin
     jsv := jso.GetValue('dataVolume');
     jarr := jsv as TJSONArray;
     jarrCount := jarr.Count;
-    table.py.ChangeCount(table.px1.Count,table.px2.Count);
-    k := 0;
 
+    if (jarrCount<x1Count*x2Count) then begin // недостаточно данных в файле
+        Result:=False;
+        end;
+
+    table.py.ChangeCount(x1Count,x2Count);
+    DataLength:=0;
     for i:=0 to x1count-1 do
     for j := 0 to x2count-1 do begin
-      arrValue := jarr.Items[k];
+      arrValue := jarr.Items[DataLength];
       table.py[i][j]:=StrToFloat(arrValue.AsType<string>);
-      inc(k);
+      inc(DataLength);
       end;
-
   except
     Result := False;
   end;
@@ -1125,15 +1132,19 @@ begin
 end;
 
 //----------------------------------------------------------------------------
-function TInterpolBlockXY.LoadDataFromFile(): Boolean;
+function TInterpolBlockXY.LoadDataFromCsv(): Boolean;
 begin
   //Загрузка данных из файла с таблицей
+  DataLength := 0;
   Result:=True;
   table.OpenFromFile(fileName);
   if (table.px1.Count = 0) or (table.px2.Count = 0) then begin
+    ErrorEvent(txtErrorReadTable,msError,VisualObject);
     Result:=False;
     exit;
     end;
+  DataLength:=table.px1.Count*table.px2.Count;
+
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.LoadData(): Boolean;
@@ -1144,7 +1155,12 @@ case inputMode of
   1:// в разных файлах
     Result:=LoadDataFrom2Files();
   2:// в одном файле
-    Result:=LoadDataFromFile();
+    begin
+      Result:=LoadDataFromJSON();
+      if Result then exit; //  успешно подгрузили из JSON
+
+      Result:=LoadDataFromCsv();
+    end;
   3:// через порты
     Result:=LoadDataFromPorts();
   else
@@ -1153,6 +1169,15 @@ case inputMode of
     exit;
   end;
 
+end;
+//----------------------------------------------------------------------------
+function TInterpolBlockXY.CheckData(): Boolean;
+begin
+  Result := (table.px1.Count*table.px2.Count=DataLength);
+  if not Result then begin
+    ErrorEvent(txtErrorReadTable,msError,VisualObject);
+    exit;
+    end;
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
@@ -1165,8 +1190,7 @@ begin
     f_InitObjects:
       begin
        //Загрузка данных из файла с таблицей
-       if not LoadData() then begin
-         ErrorEvent(txtErrorReadTable,msError,VisualObject);
+       if (FALSE=LoadData() or FALSE=CheckData()) then begin
          Result:=r_Fail;
        end;
       end;
@@ -1374,7 +1398,7 @@ begin
   case Action of
     f_InitObjects:
       begin
-        if not LoadData then begin
+        if (False=LoadData() or False=CheckData()) then begin
           Result:=r_Fail;
           exit;
           end;
@@ -1415,11 +1439,35 @@ end;
 //--------------------------------------------------------------------------
 function TInterpolBlockMultiDim.LoadData(): Boolean;
 begin
-
   if inputMode=0 then
     Result := LoadDataFromProperties()
-  else
-    Result := LoadDataFromFile();
+  else begin
+    Result := LoadDataFromJSON();
+    if not Result then begin
+      ErrorEvent('ошибка загрузки файла'+FileName, msError, VisualObject);
+      end;
+  end;
+
+end;
+//---------------------------------------------------------------------------
+function TInterpolBlockMultiDim.CheckData(): Boolean;
+var
+  i: Integer;
+  Volume: Integer;
+begin
+  Result:=True;
+
+  Volume := 1;
+  for i:=0 to Xtable.CountX-1 do begin
+    Volume := Volume*Xtable[i].Count;
+    end;
+
+  if (DataLength<>Volume) then begin
+    ErrorEvent('Некорректная размерность', msError, VisualObject);
+    Result:=False;
+    exit;
+    end;
+
 end;
 //---------------------------------------------------------------------------
 function TInterpolBlockMultiDim.LoadDataFromJSON(): Boolean;
@@ -1434,13 +1482,13 @@ var
 begin
   Result := True;
   jso := nil;
+  DataLength:=0;
 
   try
     str1 := TFILE.ReadAllText(ExpandFileName(FileName));
     jso := TJSONObject.ParseJSONValue(str1) as TJSONObject;
 
-    // подгружаем оси и размерности
-    //axisCount := jso.GetValue<integer>('axisCount');
+    // подгружаем оси
     axisCount:=0;
     for i:=0 to 10 do begin
       str2 := 'axis'+IntToStr(i+1);
@@ -1473,6 +1521,7 @@ begin
     for j := 0 to jarrCount - 1 do begin
       arrValue := jarr.Items[j];
       Ftable[j]:=StrToFloat(arrValue.AsType<string>);
+      inc(DataLength);
       end;
 
   except
@@ -1481,17 +1530,12 @@ begin
 
   if Assigned(jso) then FreeAndNil(jso);
 end;
-
-function TInterpolBlockMultiDim.LoadDataFromFile(): Boolean;
-begin
-  Result := LoadDataFromJSON();
-end;
 //---------------------------------------------------------------------------
 function TInterpolBlockMultiDim.LoadDataFromProperties(): Boolean;
-// загрузить данные из файлов в расчетные Xarg Fval
 begin
-  TExtArray_cpy(Ftable, prop_F);
   TExtArray2_cpy(Xtable,prop_X);
+  TExtArray_cpy(Ftable, prop_F);
+  DataLength := prop_F.Count;
   Result := True;
 end;
 //---------------------------------------------------------------------------
