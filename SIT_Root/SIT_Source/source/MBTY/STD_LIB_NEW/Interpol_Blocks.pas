@@ -41,8 +41,6 @@ type
     //0:Кусочно-постоянная 1:Линейная 2:Сплайн Кубический 3: Лагранж
     InterpolationType,
     LagrangeOrder,  // порядок интерполяции для метода Лагранжа
-    Npoints, // число точек функции
-    prop_Npoints, // для задания числа точек через порты
     nport, // свойство для изменения числа видимых портов
     Fdim: NativeInt; // размерность выходного вектора функции
 
@@ -68,7 +66,7 @@ type
     function LoadDataFromPorts(): Boolean;
     function LoadDataFromJSON(): Boolean;
 
-    function CheckInputsU(): Boolean; // проверить корректность входных портов
+    function CheckData(): Boolean; // проверить корректность входных портов
 
   public
     function       InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
@@ -232,6 +230,9 @@ begin
 
   Xarr_data := TExtArray.Create(1); // точки аргументов Xi функции, если она считана из файла
   Farr_data := TExtArray.Create(1);
+
+  // TODO - исключить это свойство FDIM
+  Fdim:=1;
 end;
 //----------------------------------------------------------------------------
 destructor  TInterpolBlock1d.Destroy;
@@ -263,13 +264,6 @@ begin
     exit;
     end;
 
-  // размерность выходного вектора функции
-  if StrEqu(ParamName,'Fdim') then begin
-    Result:=NativeInt(@Fdim);
-    DataType:=dtInteger;
-    exit;
-    end;
-
   // тип интерполяции - кусочно-постоянная, линейная, Лагранжа и т.п.
   if StrEqu(ParamName,'InterpolationType') then begin
     Result:=NativeInt(@InterpolationType);
@@ -291,21 +285,6 @@ begin
     exit;
     end;
 
-  // число дополнительных портов
-  if StrEqu(ParamName,'nport') then begin
-    Result:=NativeInt(@nport);
-    DataType:=dtInteger;
-    exit;
-    end;
-
-  // число точек при задании через порты
-  if StrEqu(ParamName,'Npoints') then begin
-    Result:=NativeInt(@prop_Npoints);
-    DataType:=dtInteger;
-    exit;
-    end;
-
-
   if StrEqu(ParamName,'FileName') then begin
     Result:=NativeInt(@FileName);
     DataType:=dtString;
@@ -324,13 +303,13 @@ begin
     exit;
     end;
 
-  if StrEqu(ParamName,'FileNameArgsX') then begin
+  if StrEqu(ParamName,'FileNameArgs') then begin
     Result:=NativeInt(@FileNameArgs);
     DataType:=dtString;
     exit;
     end;
 
-  if StrEqu(ParamName,'FileNameValsF') then begin
+  if StrEqu(ParamName,'FileNameVals') then begin
     Result:=NativeInt(@FileNameVals);
     DataType:=dtString;
     exit;
@@ -342,138 +321,46 @@ begin
     exit;
     end;
 
+  // число дополнительных портов
+  if StrEqu(ParamName,'nport') then begin
+    Result:=NativeInt(@nport);
+    DataType:=dtInteger;
+    exit;
+    end;
+
   ErrorEvent(txtParamUnknown1+ParamName+txtParamUnknown1, msWarning, VisualObject);
 end;
 
 //---------------------------------------------------------------------------
-
 function TInterpolBlock1d.LoadDataFromProperties(): Boolean;
 begin
-  Result := True;
-
-  {
-  if prop_F_arr.Count<>Fdim*prop_X_arr.Count then begin //проверка корректности входных размеров
-    ErrorEvent(txtFiXiDimError, msError, VisualObject);
-    Result := False;
-    exit;
-    end;
-  }
   // копируем
   TExtArray_cpy(Xarr_data, prop_X_arr);
   TExtArray_cpy(Farr_data, prop_F_arr);
-
-  NPoints := Xarr_data.Count;
   DataLength := Farr_data.Count;
-
+  Result := True;
 end;
 //---------------------------------------------------------------------------
 function TInterpolBlock1d.LoadDataFrom2Files(): Boolean;
-label
-  OnExit;
 var
-  tableX,tableF: TTable1;
-  i,j,yy: Integer;
+  a,b: Boolean;
 begin
+  if not Load_TExtArray_FromFile(FileNameArgs, Xarr_data) then exit(False);
+  if not Load_TExtArray_FromFile(FileNameVals, Farr_data)then exit(False);
+
+  DataLength:=Farr_data.Count;
   Result := True;
-  tableX := TTable1.Create(FileNameArgs);
-  tableF := TTable1.Create(FileNameVals);
-
-  if not tableX.OpenFromFile(FileNameArgs) then begin
-    ErrorEvent(txtFileError1+FileNameArgs+txtFileError2,msError,VisualObject);
-    Result := False;
-    goto OnExit;
-    end;
-
-  if not tableF.OpenFromFile(FileNameVals) then begin
-    ErrorEvent(txtFileError1+FileNameVals+txtFileError2,msError,VisualObject);
-    Result := False;
-    goto OnExit;
-    end;
-
-  if tableX.px.count<>tableF.px.count then begin
-    ErrorEvent(txtFilesRowCountErr1+FileNameArgs+', '+FileNameVals+txtFilesRowCountErr2,msError,VisualObject);
-    Result := False;
-    goto OnExit;
-    end;
-
-  if Fdim <> (1+tableF.FunsCount) then begin
-    ErrorEvent(txtFilesWrongFdim1+IntToStr((1+tableF.FunsCount))+' <> '+IntToStr(Fdim)+txtFilesWrongFdim2, msWarning, VisualObject);
-    Result := False;
-    goto OnExit;
-    end;
-
-  Xarr_data.ChangeCount(tableX.px.count);
-  Farr_data.ChangeCount(tableF.px.count*(tableF.FunsCount+1));
-
-  // размерность из файла
-  Npoints := Xarr_data.Count;
-
-  // идем по входному вектору и добавляем точки в функцию.
-  yy := 0;
-  for i:=0 to tableX.px.count-1 do begin
-    Xarr_data[i] := tableX.px[i];
-
-    // TODO переделать - дурацкий метод, но работает
-    Farr_data[yy] := tableF.px[i]; // первая точка - из первого столбца аргументов
-    inc(yy);
-    for j:=0 to tableF.FunsCount-1 do begin // остальные точки - из вектора значений
-      Farr_data[yy] := tableF.py.Arr[j][i];
-      inc(yy);
-      end;
-    end;
-
-OnExit:
-  FreeAndNil(tableX);
-  FreeAndNil(tableF);
 end;
 //----------------------------------------------------------------------
 
 function TInterpolBlock1d.LoadDataFromFile(): Boolean;
-label
-  OnExit;
-var
-  table1: TTable1;
-  i,j,yy: Integer;
 begin
-  Result := True;
-  table1 := TTable1.Create(FileName);
-
-  if not table1.OpenFromFile(FileName) then begin
-    ErrorEvent(txtFileError1+FileName+txtFileError2,msError,VisualObject);
-    Result := False;
-    goto OnExit;
-    end;
-
-  if Fdim <> (table1.FunsCount) then begin
-    ErrorEvent(txtFilesWrongFdim1+IntToStr((table1.FunsCount))+' <> '+IntToStr(Fdim)+txtFilesWrongFdim2, msWarning, VisualObject);
-    Result := False;
-    goto OnExit;
-    end;
-
-  Xarr_data.ChangeCount(table1.px.count);
-  Farr_data.ChangeCount(table1.px.count*Fdim);
-
-  // размерности устанавливаем из файла
-  Npoints := table1.px.count;
-
-  yy:=0;
-  for i:=0 to table1.px.count-1 do begin // идем по входному вектору и добавляем точки в функцию.
-    Xarr_data[i] := table1.px[i];
-
-    for j:=0 to table1.FunsCount-1 do begin
-      Farr_data[yy] := table1.py.Arr[j][i];
-      //Fi_data[i+j*Npoints] := table1.py.Arr[j][i];
-      inc(yy);
-      end;
-    end;
-
-OnExit:
-  FreeAndNil(table1);
+  Result := Load_2TExtArrays_FromFile(FileName,Xarr_data,Farr_data);
 end;
 
 //============================================================================
 // проверить корректность входных портов
-function TInterpolBlock1d.CheckInputsU(): Boolean;
+function TInterpolBlock1d.CheckData(): Boolean;
 begin
   Result := True;
 
@@ -512,7 +399,9 @@ end;
 function TInterpolBlock1d.LoadDataFromPorts(): Boolean;  // stub
 begin
   Result := True;
-  Npoints := prop_Npoints;
+  TExtArray_cpy(Xarr_data, U[1]);
+  TExtArray_cpy(Farr_data, U[2]);
+  DataLength:=Farr_data.Count;
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlock1d.LoadDataFromJSON(): Boolean;
@@ -569,7 +458,10 @@ begin
     1:
       Result := LoadDataFrom2Files();
     2:
-      Result := LoadDataFromFile();
+      begin
+        Result := LoadDataFromJSON();
+        if not Result then Result := LoadDataFromFile();
+      end;
     3:
       Result := LoadDataFromPorts();
     else begin
@@ -577,7 +469,6 @@ begin
       ErrorEvent(txtInputModeErr1+IntToStr(InputMode)+txtInputModeErr2, msError, VisualObject);
     end;
   end;
-
 
   // проверяем, есть ли в аргументах Х дубликаты
   if TExtArray_HasDuplicates(Xarr_data) then begin
@@ -590,19 +481,16 @@ begin
   // проверяем, упорядочены ли точки. При необходимости - упорядочиваем
   if (InputMode < 3)and(TExtArray_IsOrdered(Xarr_data)=False) then begin
     ErrorEvent(txtFuncTableReordered, msWarning, VisualObject);
-    TExtArray_Sort_XY_Arr(Xarr_data, Farr_data, Npoints, Fdim);
+    TExtArray_Sort_XY_Arr(Xarr_data, Farr_data, Xarr_data.Count, 1);
     end;
 
 end;
-
 //===========================================================================
 function    TInterpolBlock1d.InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;
 begin
   Result := r_Success;
 
   case Action of
-    //i_GetPropErr: //Проверка правильности задания параметров блока (перед сортировкой)
-
     i_GetCount: //Получить размерности входов\выходов
       begin
 
@@ -614,8 +502,8 @@ begin
         //CheckInputsU();
 
         if InputMode=3 then begin // для случая задания функции через порты
-          cU[1].Dim:=SetDim([Npoints]);
-          cU[2].Dim:=SetDim([Npoints*Fdim]);
+          cU[1].Dim:=SetDim([Xarr_data.Count]);
+          cU[2].Dim:=SetDim([Xarr_data.Count*1]);
           end;
 
         // размерность выходного вектора всегда определена
@@ -688,10 +576,10 @@ begin
     exit;
     end;
 
-  if x>px[Npoints-1] then begin
+  if x>px[Xarr_data.Count-1] then begin
     case ExtrapolationType of
       0: // константа вне диапазона
-          begin AYvalue := py[Npoints-1]; end; // берем последнее значение из таблицы значений
+          begin AYvalue := py[Xarr_data.Count-1]; end; // берем последнее значение из таблицы значений
 
       1: // ноль вне диапазона
           begin AYvalue := 0; end;
@@ -731,7 +619,7 @@ var
   q: integer;
 begin
   Result := False;
-  for q:=0 to Npoints - 1 do // идем по данным, если видим неравенство - данные новые.
+  for q:=0 to Xarr_data.Count - 1 do // идем по данным, если видим неравенство - данные новые.
     if (x_stamp[i].Arr^[q] <> px[q]) or (y_stamp[i].Arr^[q] <> py[q]) then begin
       x_stamp[i].Arr^[q] := px[q];
       y_stamp[i].Arr^[q] := py[q];
@@ -751,9 +639,9 @@ begin
         //Здесь устанавливаем нужные размерности вспомогательных таблиц и переменных
         SetLength(LastInd,GetFullDim(cU[2].Dim));
         ZeroMemory(Pointer(LastInd), GetFullDim(cU[2].Dim)*SizeOf(NativeInt));
-        SplineArr.ChangeCount(5, Npoints);
-        x_stamp.ChangeCount(Fdim, Npoints);
-        y_stamp.ChangeCount(Fdim, Npoints);
+        SplineArr.ChangeCount(5, Xarr_data.Count);
+        x_stamp.ChangeCount(1, Xarr_data.Count);
+        y_stamp.ChangeCount(1, Xarr_data.Count);
       end;
 
     f_InitState, //Запись начальных состояний
@@ -777,7 +665,7 @@ begin
                   // X - АРГУМЕНТ, N - ПОРЯДОК ПОЛИНОМА, M - HOMEP ЭЛЕМЕНТА, C KOTOPOГO НЕОБХОДИМО НАЧАТЬ ИНТЕРПОЛЯЦИЮ
                   if checkX_range(U[0].Arr^[j],Yvalue) then begin
                       //Y[0].arr^[i*U[0].Count+j] := Lagrange(px^,py^,U[0].arr^[j],LagrangeOrder,1);
-                      Y[0].arr^[i*U[0].Count+j] := MyLagrange(px,py,U[0].arr^[j],LagrangeOrder,NPoints);
+                      Y[0].arr^[i*U[0].Count+j] := MyLagrange(px,py,U[0].arr^[j],LagrangeOrder,Xarr_data.Count);
                     end else begin
                       Y[0].arr^[i*U[0].Count+j] := Yvalue;
                     end;
@@ -789,7 +677,7 @@ begin
            2:   //Вычисление натурального кубического сплайна
               begin
                 if CheckChanges or (Action = f_InitState) then begin
-                  NaturalSplineCalc(px, py, SplineArr.Arr, Npoints, prop_IsNaturalSpline );
+                  NaturalSplineCalc(px, py, SplineArr.Arr, Xarr_data.Count, prop_IsNaturalSpline );
                   end;
 
                 for j:=0 to U[0].Count-1 do begin
@@ -807,7 +695,7 @@ begin
            1:   // Линейная интерполяция
               begin
                 if CheckChanges or (Action = f_InitState) then begin
-                  LInterpCalc(px, py, SplineArr.Arr, Npoints );
+                  LInterpCalc(px, py, SplineArr.Arr, Xarr_data.Count );
                   end;
 
                 for j:=0 to U[0].Count-1 do begin
@@ -826,8 +714,8 @@ begin
                   for j:=0 to U[0].Count-1 do begin
                     if checkX_range(U[0].Arr^[j],Yvalue) then begin
                         // находим интервал значений для интерполяции
-                        nXindex := NPoints-1;
-                        Find1(U[0].Arr^[j],px,NPoints,nXindex);
+                        nXindex := Xarr_data.Count-1;
+                        Find1(U[0].Arr^[j],px,Xarr_data.Count,nXindex);
                         Y[0].arr^[c] := py[nXindex];
                       end else begin
                         Y[0].arr^[c] := Yvalue;
@@ -845,7 +733,7 @@ begin
            end;
 
          // двигаем указатель на данные следующей функции в наборе
-         py := @py^[Npoints];
+         py := @py^[Xarr_data.Count];
         end
       end;
   end

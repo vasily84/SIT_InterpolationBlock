@@ -20,6 +20,7 @@ procedure TExtArray_Sort_XY_Arr(Xarr: TExtArray; Yarr: TExtArray; NPoints,Fdim: 
 
 
 function Load_TExtArray_FromFile(FileName: string; var array1: TExtArray): Boolean;
+function Load_2TExtArrays_FromFile(FileName: string; var Xarr,Yarr: TExtArray): Boolean;
 
 function Load_TExtArray2_FromCsvFile(FileName: string; var arrayVect: TExtArray2): Boolean;
 
@@ -197,7 +198,7 @@ end;
 function Load_TExtArray2_FromCsvFile(FileName: string; var arrayVect: TExtArray2): Boolean;
 // загрузить массив векторов из файла
 var
-  slist1,slist2,slist3: TStringList;
+  slist1,slist2: TStringList;
   str1,str2: string;
   v1: RealType;
   i,j: integer;
@@ -238,6 +239,62 @@ begin
         v1 := StrToFloat(str2);
         arrayVect[i][j] := v1;
         end;
+      end;
+
+  except
+    Result := False;
+  end;
+
+  FreeAndNil(slist1);
+  FreeAndNil(slist2);
+end;
+
+function Load_2TExtArrays_FromFile(FileName: string; var Xarr,Yarr: TExtArray): Boolean;
+// загрузить массив векторов из файла
+var
+  slist1,slist2: TStringList;
+  str1,str2: string;
+  vX,vY: RealType;
+  i: integer;
+  countX,countY: Integer;
+begin
+  Result := True;
+  FileName := ExpandFileName(FileName);
+
+  try
+    slist1 := TStringList.Create;
+    slist2 := TStringList.Create;
+
+    slist1.LoadFromFile(FileName);
+    // отбрасываем комментарии и пустые строки
+    RemoveCommentsFromStrings(slist1);
+
+    str1 := slist1.Text;
+    // замена , на ;
+    str1 := StringReplace(str1, ',', ';', [rfReplaceAll, rfIgnoreCase]);
+    slist1.Text := str1;
+    countX := slist1.Count;
+    Xarr.Count := countX;
+    Yarr.Count := countX;
+
+    for i:=0 to countX-1 do begin
+      str1 := slist1.Strings[i];
+
+      slist2.Clear;
+      slist2.LineBreak := ';';
+      slist2.Text := str1;
+
+      countY := slist2.Count;
+      if countY<>2 then Result:=False;
+
+      str2 := Trim(slist2.Strings[0]);
+      vX := StrToFloat(str2);
+
+      str2 := Trim(slist2.Strings[1]);
+      vY := StrToFloat(str2);
+
+      Xarr[i] := vX;
+      Yarr[i] := vY;
       end;
 
   except
