@@ -172,42 +172,26 @@ const
 {$IFNDEF ENG}
   txtParamUnknown1 = 'параметр "';
   txtParamUnknown2 = '" в блоке не найден';
-  txtFiXiDimError = 'Число значений Fi и аргументов Xi входной функции не совпадает';
+
+  txtFiXiDimError = 'Число значений F и аргументов X входной функции не совпадает';
   txtFileError1 = 'Файл ';
   txtFileError2 = ' невозможно считать';
+
+  txtDimError = 'Некорректная размерность входных данных';
   txtPortsNot3 = 'Число входных портов не равно 3'; // переделать с названиями входных портов
 
-  txtInputModeErr1 = 'Метод задания таблицы функции ';
-  txtInputModeErr2 = ' не реализован';
-
-  txtInterpolationTypeErr1 = 'метод интерполяции "';
-  txtInterpolationTypeErr2 = '" не реализован';
-
-  txtFilesRowCountErr1 = 'Файлы ';
-  txtFilesRowCountErr2 = ' содержат разное число строк';
-  txtFilesWrongFdim1 = 'Размерность функции из файла и свойства Fdim ';
-  txtFilesWrongFdim2 = ' не совпадает';
   txtXiduplicates = 'таблица значений функции содержит дубликаты аргумента';
   txtFuncTableReordered = 'таблица значений функции переупорядочена по возрастанию аргумента';
   txtPortsNot1 = 'должен быть задан 1 входной порт';
 {$ELSE}
   txtParamUnknown1 = 'parameter "';
   txtParamUnknown2 = '" is undefined';
-  txtFiXiDimError = 'The number of values of Fi and arguments Xi of the input function does not match';
+  txtFiXiDimError = 'The number of values of F and arguments X of the input function does not match';
   txtFileError1 = 'File ';
   txtFileError2 = ' reading failed';
+  txtDimError = 'Input data dimension error';
   txtPortsNot3 = 'The number of input ports is not equal to 3';
 
-  txtInputModeErr1 = 'function table InputMode ';
-  txtInputModeErr2 = ' not implemented';
-
-  txtInterpolationTypeErr1 = 'Interpolation type "';
-  txtInterpolationTypeErr2 = '" not implemented';
-
-  txtFilesRowCountErr1 = 'files  ';
-  txtFilesRowCountErr2 = ' is contain different numbers of rows';
-  txtFilesWrongFdim1 = 'the dimension of the function from the file and the property Fdim';
-  txtFilesWrongFdim2 = '  does not match';
   txtXiduplicates = 'The table of function values contains duplicate arguments';
   txtFuncTableReordered = 'the table of function values is reordered in ascending order of the argument';
   txtPortsNot1 = 'must be set only 1 input port';
@@ -345,8 +329,15 @@ function TInterpolBlock1d.LoadDataFrom2Files(): Boolean;
 var
   a,b: Boolean;
 begin
-  if not Load_TExtArray_FromFile(FileNameArgs, Xarr_data) then exit(False);
-  if not Load_TExtArray_FromFile(FileNameVals, Farr_data)then exit(False);
+  if not Load_TExtArray_FromFile(FileNameArgs, Xarr_data) then begin
+    ErrorEvent(txtFileError1+FileNameArgs+txtFileError2, msError, VisualObject);
+    exit(False);
+    end;
+
+  if not Load_TExtArray_FromFile(FileNameVals, Farr_data)then begin
+    ErrorEvent(txtFileError1+FileNameVals+txtFileError2, msError, VisualObject);
+    exit(False);
+    end;
 
   DataLength:=Farr_data.Count;
   Result := True;
@@ -359,41 +350,14 @@ begin
 end;
 
 //============================================================================
-// проверить корректность входных портов
+// проверить корректность входных данных
 function TInterpolBlock1d.CheckData(): Boolean;
 begin
   Result := True;
-
-  case InputMode of
-    3: // из портов
-    begin
-      // 0. проверяем размерности входных портов -
-      // U[0] - args - значение аргумента X
-      // U[1] - args_arr - массив заданных значений аргумента
-      // U[2] - func_table - матрица значений функции
-      //--------------------------------------------------------
-      //TODO - надо ли это вообще? SIT IDE сама проверяет размерности?
-      if Length(U)<>3 then begin
-        ErrorEvent(txtPortsNot3, msError, VisualObject);
-        Result := False;
-        exit;
-        end;
-
-      if U[2].Count<>Fdim*U[1].Count then begin //проверка корректности входных размеров
-        ErrorEvent(txtFiXiDimError, msError, VisualObject );
-        Result := False;
-        exit;
-        end;
+  if Xarr_data.Count<>Farr_data.Count then begin
+    ErrorEvent(txtDimError, msError, VisualObject);
+    Result := False;
     end;
-    else // должен быть задан один входной порт
-      begin
-      if Length(U)<>1 then begin
-        ErrorEvent(txtPortsNot1, msError, VisualObject);
-        Result := False;
-        exit;
-        end;
-      end;
-  end;
 end;
 //---------------------------------------------------------------------------
 function TInterpolBlock1d.LoadDataFromPorts(): Boolean;  // stub
@@ -461,12 +425,15 @@ begin
       begin
         Result := LoadDataFromJSON();
         if not Result then Result := LoadDataFromFile();
+        if not Result then begin
+          ErrorEvent(txtFileError1+FileName+txtFileError2, msError, VisualObject);
+          end;
       end;
     3:
       Result := LoadDataFromPorts();
     else begin
       Result := False;
-      ErrorEvent(txtInputModeErr1+IntToStr(InputMode)+txtInputModeErr2, msError, VisualObject);
+      Assert(False,'TInterpolBlock1d метод задания функции не реализован');
     end;
   end;
 
@@ -476,12 +443,10 @@ begin
     end;
 
   // TODO - сейчас с дубликатами дуркует.
-  // Необходимо добавить функцию исключения дубликатов из кода
-
   // проверяем, упорядочены ли точки. При необходимости - упорядочиваем
-  if (InputMode < 3)and(TExtArray_IsOrdered(Xarr_data)=False) then begin
-    ErrorEvent(txtFuncTableReordered, msWarning, VisualObject);
-    TExtArray_Sort_XY_Arr(Xarr_data, Farr_data, Xarr_data.Count, 1);
+  if (TExtArray_IsOrdered(Xarr_data)=False) then begin
+    //ErrorEvent(txtFuncTableReordered, msWarning, VisualObject);
+    TExtArray_Sort_XY_Arr(Xarr_data, Farr_data);
     end;
 
 end;
@@ -503,7 +468,7 @@ begin
 
         if InputMode=3 then begin // для случая задания функции через порты
           cU[1].Dim:=SetDim([Xarr_data.Count]);
-          cU[2].Dim:=SetDim([Xarr_data.Count*1]);
+          cU[2].Dim:=SetDim([Xarr_data.Count]);
           end;
 
         // размерность выходного вектора всегда определена
@@ -591,28 +556,15 @@ begin
   Result := True;
 end;
 //---------------------------------------------------------------------------
-procedure SetPxPy;
+procedure SetPxPy; // stub
 // устанавливаем указатели px py на начало актуальных данных
 begin
-  case InputMode of
-    0,1,2: // из файлов в разных вариантах
-      begin
-          // устанавливаем указатели на считанные данные
-          px := Xarr_data.Arr;
-          py := Farr_data.Arr;
-      end;
-
-    3: // из портов
-      begin
-        // U[1] - агрументы, U[2] - таблица значений
-        px := U[1].Arr;
-        py := U[2].Arr;
-      end;
-  end;
-
+  // устанавливаем указатели на считанные данные
+  px := Xarr_data.Arr;
+  py := Farr_data.Arr;
 end;
 //------------------------------------------------------------------------
-function  CheckChanges: boolean;
+function  CheckChanges: Boolean;
 // входной вектор был изменен?
 // Это Признак для пересчета внутренних матриц функций интерполяции
 var
@@ -726,7 +678,7 @@ begin
                 end;
            else
               begin
-                ErrorEvent(txtInterpolationTypeErr1+IntToStr(InterpolationType)+txtInterpolationTypeErr2, msError, VisualObject );
+                Assert(False,'TInterpolBlock1d метод задания интерполяции не реализован');
                 Result := r_Fail;
                 exit;
               end;
@@ -870,7 +822,6 @@ function TInterpolBlockXY.checkXY_Range(var aX1,aX2: RealType;var aZvalue: RealT
 // иначе - False, и изменяет AYValue на значение экстраполяции
 var
   // признаки нахождения аргументов в границах диапазонов
-  //x1_belowRange,x1_inRange,x1_aboveRange,x2_belowRange,x2_inRange,x2_aboveRange: Boolean;
   x1_inRange,x2_inRange: Boolean;
 begin
 
@@ -896,12 +847,6 @@ begin
     exit;
     end;
 
-  //x1_belowRange := aX1<table.px1[0];
-  //x1_aboveRange := aX1>table.px1[table.Arg1Count-1];
-
-  //x2_belowRange := aX2<table.px2[0];
-  //x2_aboveRange := aX2>table.px2[table.Arg2Count-1];
-
   // кусочно-постоянная интерполяция
   Result:=False;
   // подставляем результат интервальной интерполяции
@@ -915,14 +860,10 @@ var
   i,j,M,N: Integer;
   f: RealType;
 begin
+  DataLength:=0;
   N := U[ROW_ARGS_ARR].Count;
   M := U[COL_ARGS_ARR].Count;
 
-  // TODO - проверка размерности
-  if (M*N>U[FUNCS_TABLE].Count) then begin
-    Result:=False;
-    exit;
-    end;
 
   table.Arg1Count := N;
   table.Arg2Count := M;
@@ -931,7 +872,11 @@ begin
   TExtArray_cpy(table.px2, U[COL_ARGS_ARR]);
 
   table.py.ChangeCount(N,M);
-  DataLength:=0;
+
+  if (M*N<>U[FUNCS_TABLE].Count) then begin
+    Result:=False;
+    exit;
+    end;
 
   for i:=0 to N-1 do begin
     for j:=0 to M-1 do begin
@@ -963,16 +908,25 @@ begin
   DataLength:=0;
 
   //rows
-  if not Load_TExtArray_FromFile(FileNameRows,table.px1) then exit;
+  if not Load_TExtArray_FromFile(FileNameRows,table.px1) then begin
+    ErrorEvent(txtFileError1+FileNameRows+txtFileError2,msError,VisualObject);
+    exit;
+    end;
   table.Arg1Count:=table.px1.Count;
 
   // cols
-  if not Load_TExtArray_FromFile(FileNameCols,table.px2) then exit;
+  if not Load_TExtArray_FromFile(FileNameCols,table.px2) then begin
+    ErrorEvent(txtFileError1+FileNameCols+txtFileError2,msError,VisualObject);
+    exit;
+    end;
   table.Arg2Count:=table.px2.Count;
 
   // vars
-  if not Load_TExtArray2_FromCsvFile(FileNameVals,table.py) then exit;
-  // TODO!! добавить варианты чтения бинарника и JSON
+  if not Load_TExtArray2_FromCsvFile(FileNameVals,table.py) then begin
+    ErrorEvent(txtFileError1+FileNameVals+txtFileError2,msError,VisualObject);
+    exit;
+    end;
+  // TODO!! добавить варианты чтения бинарника
   DataLength:=table.px1.Count*table.px2.Count;
   Result := True;
 end;
@@ -1101,11 +1055,14 @@ case inputMode of
       if Result then exit; //  успешно подгрузили из JSON
 
       Result:=LoadDataFromTbl();
+      if not Result then begin
+        ErrorEvent(txtFileError1+FileName+txtFileError2,msError,VisualObject);
+        end;
     end;
   3:// через порты
     Result:=LoadDataFromPorts();
   else
-    Assert(False,'unknown input type');
+    Assert(False,'TInterpolBlockXY метод задания функции не реализован');
     Result:=False;
     exit;
   end;
@@ -1128,7 +1085,8 @@ begin
   Result:=r_Success;
 
   case Action of
-    f_InitObjects:
+    f_InitObjects,
+    f_InitState:  // можно сделать общую загрузку и проверки для режимов файла
       begin
        //Загрузка данных из файла с таблицей
        if (FALSE=LoadData() or FALSE=CheckData()) then begin
@@ -1136,14 +1094,6 @@ begin
        end;
       end;
 
-    f_InitState:  // можно сделать общую загрузку и проверки для режимов файла
-      begin
-        //TODO - Загрузка данных из порта - почему сразу не выставляет данные на порту, неведомо
-        if inputMode=3 then LoadDataFromPorts();
-        // общая загрузка
-        // общая проверка размерности из загруженного -
-        // checkDimensions
-      end;
     f_UpdateJacoby,
     f_UpdateOuts,
     f_RestoreOuts,
@@ -1191,7 +1141,7 @@ begin
                       end;
               end;
           else
-            Assert(False,'TInterpolBlockXY interpolation method not implemented');
+            Assert(False,'TInterpolBlockXY метод интерполяции не реализован');
         end;
       end;
 
@@ -1385,10 +1335,9 @@ begin
   else begin
     Result := LoadDataFromJSON();
     if not Result then begin
-      ErrorEvent('ошибка загрузки файла'+FileName, msError, VisualObject);
+      ErrorEvent(txtFileError1+FileName+txtFileError2, msError, VisualObject);
       end;
   end;
-
 end;
 //---------------------------------------------------------------------------
 function TInterpolBlockMultiDim.CheckData(): Boolean;
@@ -1404,7 +1353,7 @@ begin
     end;
 
   if (DataLength<>Volume) then begin
-    ErrorEvent('Некорректная размерность', msError, VisualObject);
+    ErrorEvent(txtDimError, msError, VisualObject);
     Result:=False;
     exit;
     end;
