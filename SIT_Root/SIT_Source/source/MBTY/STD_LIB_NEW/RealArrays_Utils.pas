@@ -14,15 +14,12 @@ uses {$IFNDEF FPC}Windows,{$ENDIF}
      Classes, MBTYArrays, DataTypes, DataObjts, SysUtils, abstract_im_interface, RunObjts, Math, LinFuncs,
      tbls, Data_blocks, mbty_std_consts;
 
-//TODO!! ExpandFileName ? - использовать или нет?
-
 function TExtArray_IsOrdered(Arr: TExtArray): Boolean;
 function TExtArray_HasDuplicates(Arr: TExtArray): Boolean;
 procedure TExtArray_Sort_XY_Arr(Xarr: TExtArray; Yarr: TExtArray; NPoints,Fdim: Integer);
 
 
-function Load_TExtArray_FromBracketFile(FileName: string; var array1: TExtArray): Boolean;
-function Load_TExtArray2_FromBracketFile(FileName: string; var arrayVect: TExtArray2): Boolean;
+function Load_TExtArray_FromFile(FileName: string; var array1: TExtArray): Boolean;
 
 function Load_TExtArray2_FromCsvFile(FileName: string; var arrayVect: TExtArray2): Boolean;
 
@@ -163,82 +160,16 @@ begin
   Strings.Assign(slist2);
   FreeAndNil(slist2);
 end;
-//--------------------------------------------------------------------------
-
-function Load_TExtArray2_FromBracketFile(FileName: string; var arrayVect: TExtArray2): Boolean;
-// загрузить массив векторов из файла
-var
-  slist1,slist2,slist3: TStringList;
-  str1,str2: string;
-  v1: RealType;
-  i,j: integer;
-begin
-  // пример файла [[0 , 1 , 2 , 9];[0 , 5 , 8];[0 , 3]]
-  // пустые строки, строки начинающиеся с $, части строк за // - отбрасываем
-  Result := True;
-  FileName := ExpandFileName(FileName);
-
-  try
-    slist1 := TStringList.Create;
-    slist2 := TStringList.Create;
-    slist3 := TStringList.Create;
-
-    slist1.LoadFromFile(FileName);
-    // отбрасываем комментарии и пустые строки
-    RemoveCommentsFromStrings(slist1);
-
-    slist1.LineBreak := ';';
-
-    str1 := slist1.Text;
-    //TODO - добавить проверку наличия двойных скобок.
-    // заменяем двойные скобки на одинарные
-    str1 := StringReplace(str1, '[[', '[', [rfReplaceAll, rfIgnoreCase]);
-    str1 := StringReplace(str1, ']]', ']', [rfReplaceAll, rfIgnoreCase]);
-
-    // случай запятые вместо двоеточий.
-    str1 := StringReplace(str1, '],', '];', [rfReplaceAll, rfIgnoreCase]);
-    str1 := StringReplace(str1, '] ,', '];', [rfReplaceAll, rfIgnoreCase]);
-
-    slist1.Text := str1;
-
-    arrayVect.ChangeCount(slist1.Count, 1);
-
-    for i:=0 to slist1.Count-1 do begin
-      str1 := slist1.Strings[i];
-      str1 := StringReplace(str1, '[', ' ', [rfReplaceAll, rfIgnoreCase]);
-      str1 := StringReplace(str1, ']', ' ', [rfReplaceAll, rfIgnoreCase]);
-      str1 := StringReplace(str1, ';', ' ', [rfReplaceAll, rfIgnoreCase]);
-
-      slist2.Clear;
-      slist2.LineBreak := ',';
-      slist2.Text := str1;
-
-      arrayVect[i].Count := slist2.Count;
-      for j:=0 to slist2.Count-1 do begin
-        str2 := slist2.Strings[j];
-        v1 := StrToFloat(str2);
-        arrayVect[i][j] := v1;
-        end;
-      end;
-  except
-    Result := False;
-  end;
-
-  FreeAndNil(slist1);
-  FreeAndNil(slist2);
-  FreeAndNil(slist3);
-end;
 
 //---------------------------------------------------------------------------
-function Load_TExtArray_FromBracketFile(FileName: string; var array1: TExtArray): Boolean;
-// загрузить вектор из файла
+function Load_TExtArray_FromFile(FileName: string; var array1: TExtArray): Boolean;
+// загрузить вектор из файла, отбросив комментарии и форматирование.
 var
   slist1: TStringList;
   str1: string;
   v1: RealType;
   i: Integer;
 begin
-  // пример файла [0 , 0.1 , 1.1 , 1.2 , 3.5 , 3.3 , 6.1 , 6.2 , 7.1 , 7.2 , 9.1 , 9.2 , 8.1 , 8.3 , 5.6 , 5.9 , 3.7 , 3.9 , 18.1 , 18.3 , 15.6 , 5.9 , 13.7 , 13.9]
   Result := True;
   FileName := ExpandFileName(FileName);
 
@@ -246,21 +177,11 @@ begin
     slist1 := TStringList.Create;
     slist1.LoadFromFile(FileName);
     RemoveCommentsFromStrings(slist1);
-
-    slist1.LineBreak := ',';
-    str1 := slist1.Text;
-    str1 := StringReplace(str1, '[', ' ', [rfReplaceAll, rfIgnoreCase]);
-    str1 := StringReplace(str1, ']', ' ', [rfReplaceAll, rfIgnoreCase]);
-    slist1.Text := str1;
+    // TODO!! развернуть вариант с записью данных в одну строчку с разделителем , или ;
 
     array1.Count := slist1.Count;
-
     for i:=0 to slist1.Count-1 do begin
       str1 := slist1.Strings[i];
-      str1 := StringReplace(str1, '[', ' ', [rfReplaceAll, rfIgnoreCase]);
-      str1 := StringReplace(str1, ';', ' ', [rfReplaceAll, rfIgnoreCase]);
-      str1 := StringReplace(str1, ']', ' ', [rfReplaceAll, rfIgnoreCase]);
-
       v1 := StrToFloat(str1);
       array1[i] := v1;
       end;
@@ -274,9 +195,59 @@ end;
 
 //---------------------------------------------------------------------------
 function Load_TExtArray2_FromCsvFile(FileName: string; var arrayVect: TExtArray2): Boolean;
+// загрузить массив векторов из файла
+var
+  slist1,slist2,slist3: TStringList;
+  str1,str2: string;
+  v1: RealType;
+  i,j: integer;
+  countX,countY: Integer;
 begin
-  Result:=False;
+  Result := True;
+  FileName := ExpandFileName(FileName);
+
+  try
+    slist1 := TStringList.Create;
+    slist2 := TStringList.Create;
+
+    slist1.LoadFromFile(FileName);
+    // отбрасываем комментарии и пустые строки
+    RemoveCommentsFromStrings(slist1);
+
+    str1 := slist1.Text;
+    // замена , на ;
+    str1 := StringReplace(str1, ',', ';', [rfReplaceAll, rfIgnoreCase]);
+    slist1.Text := str1;
+    countX := slist1.Count;
+    slist2.Clear;
+    slist2.LineBreak:=';';
+    slist2.Text := slist1.Strings[0];
+    countY:= slist2.Count;
+
+    arrayVect.ChangeCount(countX, countY);
+
+    for i:=0 to countX-1 do begin
+      str1 := slist1.Strings[i];
+
+      slist2.Clear;
+      slist2.LineBreak := ';';
+      slist2.Text := str1;
+
+      for j:=0 to countY-1 do begin
+        str2 := Trim(slist2.Strings[j]);
+        v1 := StrToFloat(str2);
+        arrayVect[i][j] := v1;
+        end;
+      end;
+
+  except
+    Result := False;
+  end;
+
+  FreeAndNil(slist1);
+  FreeAndNil(slist2);
 end;
+
 
 //---------------------------------------------------------------------------
 function Load_TExtArray_FromBinFile(FileName: string; var array1: TExtArray; Asizeofreal:integer=8): Integer;

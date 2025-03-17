@@ -85,7 +85,7 @@ type
   protected
     table: TTable2;
   public
-    fileName,FileNameArgs,FileNameVals: string;
+    fileName,FileNameRows,FileNameCols,FileNameVals: string;
     InterpolationType: NativeInt;
     ExtrapolationType: NativeInt;
     inputMode: NativeInt;
@@ -97,8 +97,10 @@ type
     // функции загрузки значений в table. Возвращает True при успешной загрузке
     function LoadDataFromPorts(): Boolean;
     function LoadDataFromProperties(): Boolean;
-    function LoadDataFrom2Files():Boolean;
-    function LoadDataFromCsv(): Boolean;
+    function LoadDataFrom3Files():Boolean;
+    function LoadDataFromTbl(): Boolean;
+    function LoadJsonAxis(AFileName: string):Boolean;
+    function LoadJsonDataVolume(AFileName: string):Boolean;
     function LoadDataFromJSON(): Boolean;
     function LoadData(): Boolean;
 
@@ -919,13 +921,19 @@ begin
     exit;
     end;
 
-  if StrEqu(ParamName,'fileNameArgs') then begin
-    Result:=NativeInt(@fileNameArgs);
+  if StrEqu(ParamName,'fileNameRows') then begin
+    Result:=NativeInt(@fileNameRows);
     DataType:=dtString;
     exit;
     end;
 
-if StrEqu(ParamName,'fileNameVals') then begin
+  if StrEqu(ParamName,'fileNameCols') then begin
+    Result:=NativeInt(@fileNameCols);
+    DataType:=dtString;
+    exit;
+    end;
+
+  if StrEqu(ParamName,'fileNameVals') then begin
     Result:=NativeInt(@fileNameVals);
     DataType:=dtString;
     exit;
@@ -940,7 +948,6 @@ if StrEqu(ParamName,'fileNameVals') then begin
 
   ErrorEvent(txtParamUnknown1+ParamName+txtParamUnknown2, msWarning, VisualObject);
 end;
-
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;
 begin
@@ -1058,17 +1065,31 @@ begin
   TExtArray_cpy(table.px2, prop_X2_arr);
   TExtArray2_cpy(table.py, prop_DataTable);
 
-  // TODO !! - переделать в нормальное копирование с учетом размеров.
   DataLength := table.py.CountX*table.py.GetMaxCountY;
   Result := True;
 end;
 //----------------------------------------------------------------------------
-function TInterpolBlockXY.LoadDataFrom2Files(): Boolean;
+function TInterpolBlockXY.LoadDataFrom3Files(): Boolean;
 begin
   Result:=False;
-end;
+  DataLength:=0;
 
-function TInterpolBlockXY.LoadDataFromJSON(): Boolean;
+  //rows
+  if not Load_TExtArray_FromFile(FileNameRows,table.px1) then exit;
+  table.Arg1Count:=table.px1.Count;
+
+  // cols
+  if not Load_TExtArray_FromFile(FileNameCols,table.px2) then exit;
+  table.Arg2Count:=table.px2.Count;
+
+  // vars
+  if not Load_TExtArray2_FromCsvFile(FileNameVals,table.py) then exit;
+  // TODO!! добавить варианты чтения бинарника и JSON
+  DataLength:=table.px1.Count*table.px2.Count;
+  Result := True;
+end;
+//----------------------------------------------------------------------------
+function TInterpolBlockXY.LoadJsonAxis(AFileName: string):Boolean;
 var
   str1,str2: string;
   jso: TJSONObject;
@@ -1082,12 +1103,11 @@ begin
   jso := nil;
 
   try
-    str1 := TFILE.ReadAllText(ExpandFileName(FileName));
+    str1 := TFILE.ReadAllText(ExpandFileName(AFileName));
     jso := TJSONObject.ParseJSONValue(str1) as TJSONObject;
 
     // подгружаем ось Х1
-    str2 := 'axis1';
-    jarr := jso.GetValue(str2) as TJSONArray;
+    jarr := jso.GetValue('axis1') as TJSONArray;
     x1Count:=jarr.Count;
     table.Arg1Count := x1Count;
 
@@ -1097,8 +1117,7 @@ begin
       end;
 
     // подгружаем ось Х2
-    str2 := 'axis2';
-    jarr := jso.GetValue(str2) as TJSONArray;
+    jarr := jso.GetValue('axis2') as TJSONArray;
     x2Count:=jarr.Count;
     table.Arg2Count := x2Count;
 
@@ -1107,10 +1126,37 @@ begin
       table.px2[j]:=StrToFloat(arrValue.AsType<string>);
       end;
 
+  except
+    Result := False;
+  end;
+
+  if Assigned(jso) then FreeAndNil(jso);
+end;
+//----------------------------------------------------------------------------
+function TInterpolBlockXY.LoadJsonDataVolume(AFileName: string):Boolean;
+var
+  str1,str2: string;
+  jso: TJSONObject;
+  jsv: TJSONValue;
+  jarr: TJSONArray;
+  i,j,axisCount,jarrCount,x1count,x2count: Integer;
+  arrValue: TJSONValue;
+begin
+  Result := True;
+  DataLength:=0;
+  jso := nil;
+
+  try
+    str1 := TFILE.ReadAllText(ExpandFileName(AFileName));
+    jso := TJSONObject.ParseJSONValue(str1) as TJSONObject;
+
     // подгружаем тело функции
     jsv := jso.GetValue('dataVolume');
     jarr := jsv as TJSONArray;
     jarrCount := jarr.Count;
+
+    x1Count := table.px1.Count;
+    x2Count := table.px2.Count;
 
     if (jarrCount<x1Count*x2Count) then begin // недостаточно данных в файле
         Result:=False;
@@ -1130,9 +1176,16 @@ begin
 
   if Assigned(jso) then FreeAndNil(jso);
 end;
-
+//---------------------------------------------------------------------------
+function TInterpolBlockXY.LoadDataFromJSON(): Boolean;
+var
+  a,b: Boolean;
+begin
+  Result := False;
+  if ((TRUE=LoadJsonAxis(FileName))and(TRUE=LoadJsonDataVolume(FileName))) then Result:=True;
+end;
 //----------------------------------------------------------------------------
-function TInterpolBlockXY.LoadDataFromCsv(): Boolean;
+function TInterpolBlockXY.LoadDataFromTbl(): Boolean;
 begin
   //Загрузка данных из файла с таблицей
   DataLength := 0;
@@ -1153,13 +1206,13 @@ case inputMode of
   0:// ввести вручную через свойства
     Result:=LoadDataFromProperties();
   1:// в разных файлах
-    Result:=LoadDataFrom2Files();
+    Result:=LoadDataFrom3Files();
   2:// в одном файле
     begin
       Result:=LoadDataFromJSON();
       if Result then exit; //  успешно подгрузили из JSON
 
-      Result:=LoadDataFromCsv();
+      Result:=LoadDataFromTbl();
     end;
   3:// через порты
     Result:=LoadDataFromPorts();
