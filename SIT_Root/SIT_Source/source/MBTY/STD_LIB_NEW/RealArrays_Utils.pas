@@ -16,7 +16,7 @@ uses {$IFNDEF FPC}Windows,{$ENDIF}
 
 function TExtArray_IsOrdered(Arr: TExtArray): Boolean;
 function TExtArray_HasDuplicates(Arr: TExtArray): Boolean;
-procedure TExtArray_Sort_XY_Arr(Xarr: TExtArray; Yarr: TExtArray; NPoints,Fdim: Integer);
+procedure TExtArray_Sort_XY_Arr(Xarr,Yarr: TExtArray);
 
 
 function Load_TExtArray_FromFile(FileName: string; var array1: TExtArray): Boolean;
@@ -94,36 +94,31 @@ begin
 end;
 
 //----------------------------------------------------------------------------
-procedure TExtArray_Sort_XY_Arr(Xarr: TExtArray; Yarr: TExtArray; NPoints,Fdim: Integer);
+procedure TExtArray_Sort_XY_Arr(Xarr,Yarr: TExtArray);
 // отсортировать по возрастанию X пары значений (X;Y). Yi - векторный,
 // длина Y должна быть кратна X
 procedure swapPoint(q,w: Integer);
 // поменять точки q,w местами
 var
   x1,y1: RealType;
-  ff1: Integer;
 begin
   x1 := Xarr[q];
   Xarr[q] := Xarr[w];
   Xarr[w] := x1;
-
-  for ff1:=0 to Fdim-1 do begin // странное расположение массивов в памяти, но как есть
-    y1 := Yarr[q+ff1*NPoints];
-    Yarr[q+ff1*NPoints] := Yarr[w+ff1*NPoints];
-    Yarr[w+ff1*NPoints] := y1;
-    end;
-
+  y1 := Yarr[q];
+  Yarr[q] := Yarr[w];
+  Yarr[w] := y1;
 end;
-//----
+//---
 var
   minX: RealType;
   minIndex: Integer;
   i,j: Integer;
 begin
-  for i:=0 to NPoints-2 do begin
+  for i:=0 to Xarr.Count-2 do begin
     minX := Xarr[i];
     minIndex := i;
-    for j:=i+1 to NPoints-1 do begin
+    for j:=i+1 to Xarr.Count-1 do begin
       if minX>Xarr[j] then begin
         minX := Xarr[j];
         minIndex := j;
@@ -234,6 +229,8 @@ begin
       slist2.LineBreak := ';';
       slist2.Text := str1;
 
+      if countY<>slist2.Count then Result:=False;
+      
       for j:=0 to countY-1 do begin
         str2 := Trim(slist2.Strings[j]);
         v1 := StrToFloat(str2);
@@ -248,7 +245,7 @@ begin
   FreeAndNil(slist1);
   FreeAndNil(slist2);
 end;
-
+//---------------------------------------------------------------------------
 function Load_2TExtArrays_FromFile(FileName: string; var Xarr,Yarr: TExtArray): Boolean;
 // загрузить массив векторов из файла
 var
@@ -304,7 +301,6 @@ begin
   FreeAndNil(slist1);
   FreeAndNil(slist2);
 end;
-
 
 //---------------------------------------------------------------------------
 function Load_TExtArray_FromBinFile(FileName: string; var array1: TExtArray; Asizeofreal:integer=8): Integer;

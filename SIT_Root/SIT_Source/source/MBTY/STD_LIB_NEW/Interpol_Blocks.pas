@@ -38,12 +38,10 @@ type
     DataLength: Integer;
 
     //ПЕРЕЧИСЛЕНИЕ тип интерполяции
-    //0:Кусочно-постоянная 1:Линейная 2:Сплайн Кубический 3: Лагранж
     InterpolationType,
     LagrangeOrder,  // порядок интерполяции для метода Лагранжа
-    nport, // свойство для изменения числа видимых портов
-    Fdim: NativeInt; // размерность выходного вектора функции
-
+    nport: NativeInt; // свойство для изменения числа видимых портов
+    
     FileName: string; // имя единого входного файла
     FileNameArgs: string; // имя входного файла для аргументов при раздельной загрузке
     FileNameVals: string; // имя входного файла для значений функции при раздельной загрузке
@@ -54,9 +52,9 @@ type
     // последний найденный интервал интерполяции при вызове функции Interpol
     LastInd: array of NativeInt;
 
-    Xarr_data: TExtArray; // точки аргументов Xi функции, если она считана из файла
-    Farr_data: TExtArray; // точки значений Fi функции, если она считана из файла
-    // Массивы изходных данных - реально применяются только для отслеживания изменения входных данных
+    Xarr_data, Farr_data: TExtArray; // точки аргументов Xi и значений Fi функции для расчета
+
+    // Массивы иcходных данных - реально применяются только для отслеживания изменения входных данных
     x_stamp,y_stamp: TExtArray2;
 
     function LoadData(): Boolean; // загрузить данные интерполируемой функции
@@ -66,7 +64,7 @@ type
     function LoadDataFromPorts(): Boolean;
     function LoadDataFromJSON(): Boolean;
 
-    function CheckData(): Boolean; // проверить корректность входных портов
+    function CheckData(): Boolean; // проверить корректность входных данных
 
   public
     function       InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
@@ -178,11 +176,10 @@ const
   txtFileError2 = ' невозможно считать';
 
   txtDimError = 'Некорректная размерность входных данных';
-  txtPortsNot3 = 'Число входных портов не равно 3'; // переделать с названиями входных портов
-
+  
   txtXiduplicates = 'таблица значений функции содержит дубликаты аргумента';
   txtFuncTableReordered = 'таблица значений функции переупорядочена по возрастанию аргумента';
-  txtPortsNot1 = 'должен быть задан 1 входной порт';
+
 {$ELSE}
   txtParamUnknown1 = 'parameter "';
   txtParamUnknown2 = '" is undefined';
@@ -190,11 +187,9 @@ const
   txtFileError1 = 'File ';
   txtFileError2 = ' reading failed';
   txtDimError = 'Input data dimension error';
-  txtPortsNot3 = 'The number of input ports is not equal to 3';
 
   txtXiduplicates = 'The table of function values contains duplicate arguments';
   txtFuncTableReordered = 'the table of function values is reordered in ascending order of the argument';
-  txtPortsNot1 = 'must be set only 1 input port';
 {$ENDIF}
 
 //===========================================================================
@@ -203,7 +198,7 @@ constructor TInterpolBlock1d.Create;
 begin
   inherited;
   // TODO
-  IsLinearBlock:=True;
+  //IsLinearBlock:=True;
 
   prop_X_arr := TExtArray.Create(1); // точки аргументов Xi функции, если она задана через свойства объекта
   prop_F_arr:= TExtArray.Create(1); // точки значений Fi функции, если она задана через свойства объекта
@@ -214,9 +209,6 @@ begin
 
   Xarr_data := TExtArray.Create(1); // точки аргументов Xi функции, если она считана из файла
   Farr_data := TExtArray.Create(1);
-
-  // TODO - исключить это свойство FDIM
-  Fdim:=1;
 end;
 //----------------------------------------------------------------------------
 destructor  TInterpolBlock1d.Destroy;
@@ -231,7 +223,7 @@ begin
   FreeAndNil(Xarr_data);
   FreeAndNil(Farr_data);
 
-  if Assigned(LastInd) then SetLength(LastInd,0);
+  if Assigned(LastInd) then SetLength(LastInd, 0);
 
   inherited;
 end;
@@ -326,8 +318,6 @@ begin
 end;
 //---------------------------------------------------------------------------
 function TInterpolBlock1d.LoadDataFrom2Files(): Boolean;
-var
-  a,b: Boolean;
 begin
   if not Load_TExtArray_FromFile(FileNameArgs, Xarr_data) then begin
     ErrorEvent(txtFileError1+FileNameArgs+txtFileError2, msError, VisualObject);
@@ -372,9 +362,8 @@ function TInterpolBlock1d.LoadDataFromJSON(): Boolean;
 var
   str1,str2: string;
   jso: TJSONObject;
-  jsv: TJSONValue;
   jarr: TJSONArray;
-  i,j,axisCount,jarrCount: Integer;
+  j,jarrCount: Integer;
   arrValue: TJSONValue;
 begin
   Result := True;
@@ -444,7 +433,7 @@ begin
 
   // TODO - сейчас с дубликатами дуркует.
   // проверяем, упорядочены ли точки. При необходимости - упорядочиваем
-  if (TExtArray_IsOrdered(Xarr_data)=False) then begin
+  if not TExtArray_IsOrdered(Xarr_data) then begin
     //ErrorEvent(txtFuncTableReordered, msWarning, VisualObject);
     TExtArray_Sort_XY_Arr(Xarr_data, Farr_data);
     end;
@@ -459,20 +448,19 @@ begin
     i_GetCount: //Получить размерности входов\выходов
       begin
 
-        if not LoadData() then begin // Загружаем, там необходимая информация о NPoints
+        if not(LoadData() and CheckData()) then begin // Загружаем, там необходимая информация о NPoints
           Result := r_Fail;
           exit;
           end;
 
-        //CheckInputsU();
-
+        {
         if InputMode=3 then begin // для случая задания функции через порты
           cU[1].Dim:=SetDim([Xarr_data.Count]);
           cU[2].Dim:=SetDim([Xarr_data.Count]);
           end;
-
+        }
         // размерность выходного вектора всегда определена
-        cY[0].Dim:=SetDim([GetFullDim(cU[0].Dim)*Fdim]);
+        cY[0].Dim:=SetDim([GetFullDim(cU[0].Dim)]);
       end;
     else
       Result:=inherited InfoFunc(Action,aParameter);
@@ -596,7 +584,15 @@ begin
         y_stamp.ChangeCount(1, Xarr_data.Count);
       end;
 
-    f_InitState, //Запись начальных состояний
+    f_InitState: //Запись начальных состояний
+      begin
+
+        if not(LoadData() and CheckData()) then begin
+          Result := r_Fail;
+          exit;
+          end;
+      end;
+
     f_RestoreOuts,
     f_UpdateJacoby,
     f_UpdateOuts,
@@ -606,7 +602,7 @@ begin
         c := 0;
         SetPxPy(); // устанавливаем указатели на начало данных
 
-        for i:=0 to Fdim - 1 do begin
+        i:=0;
          case InterpolationType of
            3:   // Лагранж
               begin
@@ -683,10 +679,6 @@ begin
                 exit;
               end;
            end;
-
-         // двигаем указатель на данные следующей функции в наборе
-         py := @py^[Xarr_data.Count];
-        end
       end;
   end
 end;
@@ -787,33 +779,6 @@ begin
     end;
 
   ErrorEvent(txtParamUnknown1+ParamName+txtParamUnknown2, msWarning, VisualObject);
-end;
-//----------------------------------------------------------------------------
-function TInterpolBlockXY.InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;
-begin
-  Result:=r_Success;
-  case Action of
-    i_GetPropErr:
-      begin
-           // уже есть свойства, можно проверить размерности свойств
-      end;
-
-    i_GetInit:   Result:=r_Success;
-
-    i_GetCount:
-      //
-                if Length(cU) > 1 then begin
-                    if GetFullDim( cU[1].Dim ) > GetFullDim( cU[0].Dim ) then
-                       cU[0].Dim:=cU[1].Dim
-                    else
-                       cU[1].Dim:=cU[0].Dim;
-                   cY[0]:=cU[0];
-                 end
-                 else
-                   Result:=r_Fail;
-  else
-    Result:=inherited InfoFunc(Action,aParameter);
-  end;
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.checkXY_Range(var aX1,aX2: RealType;var aZvalue: RealType): Boolean;
@@ -926,18 +891,18 @@ begin
     ErrorEvent(txtFileError1+FileNameVals+txtFileError2,msError,VisualObject);
     exit;
     end;
+
   // TODO!! добавить варианты чтения бинарника
-  DataLength:=table.px1.Count*table.px2.Count;
+  DataLength:=table.py.CountX*table.py.GetMaxCountY;
   Result := True;
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.LoadJsonAxis(AFileName: string):Boolean;
 var
-  str1,str2: string;
+  str1: string;
   jso: TJSONObject;
-  jsv: TJSONValue;
   jarr: TJSONArray;
-  i,j,axisCount,jarrCount,x1count,x2count: Integer;
+  j,x1count,x2count: Integer;
   arrValue: TJSONValue;
 begin
   Result := True;
@@ -977,11 +942,11 @@ end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.LoadJsonDataVolume(AFileName: string):Boolean;
 var
-  str1,str2: string;
+  str1: string;
   jso: TJSONObject;
   jsv: TJSONValue;
   jarr: TJSONArray;
-  i,j,axisCount,jarrCount,x1count,x2count: Integer;
+  i,j,jarrCount,x1count,x2count: Integer;
   arrValue: TJSONValue;
 begin
   Result := True;
@@ -1020,11 +985,8 @@ begin
 end;
 //---------------------------------------------------------------------------
 function TInterpolBlockXY.LoadDataFromJSON(): Boolean;
-var
-  a,b: Boolean;
 begin
-  Result := False;
-  if ((TRUE=LoadJsonAxis(FileName))and(TRUE=LoadJsonDataVolume(FileName))) then Result:=True;
+  Result := (LoadJsonAxis(FileName) and LoadJsonDataVolume(FileName));
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.LoadDataFromTbl(): Boolean;
@@ -1034,7 +996,7 @@ begin
   Result:=True;
   table.OpenFromFile(fileName);
   if (table.px1.Count = 0) or (table.px2.Count = 0) then begin
-    ErrorEvent(txtErrorReadTable,msError,VisualObject);
+    //ErrorEvent(txtErrorReadTable,msError,VisualObject);
     Result:=False;
     exit;
     end;
@@ -1067,16 +1029,52 @@ case inputMode of
     exit;
   end;
 
+  if not Result then begin
+    table.px1.ChangeCount(0);
+    table.px2.ChangeCount(0);
+    table.py.ChangeCount(0,0);
+    end;
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.CheckData(): Boolean;
 begin
   Result := (table.px1.Count*table.px2.Count=DataLength);
   if not Result then begin
-    ErrorEvent(txtErrorReadTable,msError,VisualObject);
+    //ErrorEvent(txtErrorReadTable,msError,VisualObject); // "не удалось получить данные из таблицы"
+    ErrorEvent(txtDimError,msError,VisualObject);
     exit;
     end;
 end;
+//----------------------------------------------------------------------------
+function TInterpolBlockXY.InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;
+begin
+  Result:=r_Success;
+  case Action of
+    i_GetInit,
+    i_GetPropErr:
+          begin
+            //Загрузка данных из файла с таблицей
+             if not ( LoadData() and CheckData()) then begin
+               Result:=r_Fail;
+               exit;
+             end;
+          end;
+    i_GetCount:
+          // устанавливает одинаковые количества rows cols
+          if Length(cU) > 1 then begin
+              if GetFullDim( cU[1].Dim ) > GetFullDim( cU[0].Dim ) then
+                 cU[0].Dim:=cU[1].Dim
+              else
+                 cU[1].Dim:=cU[0].Dim;
+             cY[0]:=cU[0];
+           end
+           else
+             Result:=r_Fail;
+  else
+    Result:=inherited InfoFunc(Action,aParameter);
+  end;
+end;
+
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
  var i: integer;
@@ -1089,9 +1087,10 @@ begin
     f_InitState:  // можно сделать общую загрузку и проверки для режимов файла
       begin
        //Загрузка данных из файла с таблицей
-       if (FALSE=LoadData() or FALSE=CheckData()) then begin
+       if not ( LoadData() and CheckData()) then begin
          Result:=r_Fail;
-       end;
+         exit;
+        end;
       end;
 
     f_UpdateJacoby,
@@ -1239,7 +1238,7 @@ begin
   case Action of
     i_GetPropErr: // проверка размерностей
       begin
-        if not LoadData then begin
+        if not (LoadData() and CheckData()) then begin
               Result:=r_Fail;
               exit;
               end;
@@ -1266,7 +1265,7 @@ begin
 
     i_GetCount:
       begin
-        if not LoadData then begin
+        if not( LoadData()and CheckData()) then begin
           Result:=r_Fail;
           exit;
           end;
@@ -1289,7 +1288,7 @@ begin
   case Action of
     f_InitObjects:
       begin
-        if (False=LoadData() or False=CheckData()) then begin
+        if not( LoadData()and CheckData()) then begin
           Result:=r_Fail;
           exit;
           end;
@@ -1330,13 +1329,21 @@ end;
 //--------------------------------------------------------------------------
 function TInterpolBlockMultiDim.LoadData(): Boolean;
 begin
-  if inputMode=0 then
-    Result := LoadDataFromProperties()
-  else begin
+  case inputMode of
+  0:
+    Result := LoadDataFromProperties();
+  1:
+   begin
     Result := LoadDataFromJSON();
     if not Result then begin
       ErrorEvent(txtFileError1+FileName+txtFileError2, msError, VisualObject);
       end;
+    end
+   else
+    begin
+      Assert(False,'TInterpolBlockMultiDim метод задания многомерной функции не реализован');
+      Result:=False;
+    end;
   end;
 end;
 //---------------------------------------------------------------------------
