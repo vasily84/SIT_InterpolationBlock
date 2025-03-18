@@ -28,14 +28,11 @@ type
   TInterpolBlock1d = class(TRunObject)
   protected
     // ПЕРЕЧИСЛЕНИЕ откуда берем входные данные
-    // 0- ввести вручную 1-аргумент и ф-я в разных файлах
-    // 2- аргумент и функция в одном файле 3- через порты
     InputMode: NativeInt;
     ExtrapolationType: NativeInt;   // ПЕРЕЧИСЛЕНИЕ тип экстраполяции за пределами определения функции - константа,ноль, интерполяция по крайним точкам
 
     prop_X_arr: TExtArray; // точки аргументов Xi функции, если она задана через свойства объекта
     prop_F_arr: TExtArray; // точки значений Fi функции, если она задана через свойства объекта
-    DataLength: Integer;
 
     //ПЕРЕЧИСЛЕНИЕ тип интерполяции
     InterpolationType,
@@ -57,13 +54,15 @@ type
     // Массивы иcходных данных - реально применяются только для отслеживания изменения входных данных
     x_stamp,y_stamp: TExtArray2;
 
-    function LoadData(): Boolean; // загрузить данные интерполируемой функции
+    DataLength: Integer;
+    DataOk: Boolean;
     function LoadDataFromProperties(): Boolean;
     function LoadDataFrom2Files(): Boolean;
     function LoadDataFromFile(): Boolean;
     function LoadDataFromPorts(): Boolean;
     function LoadDataFromJSON(): Boolean;
 
+    function LoadData(): Boolean; // загрузить данные интерполируемой функции
     function CheckData(): Boolean; // проверить корректность входных данных
 
   public
@@ -90,16 +89,15 @@ type
     prop_DataTable: TExtArray2;
 
     DataLength: Integer;
+    DataOk: Boolean;
     // функции загрузки значений в table. Возвращает True при успешной загрузке
     function LoadDataFromPorts(): Boolean;
     function LoadDataFromProperties(): Boolean;
     function LoadDataFrom3Files():Boolean;
     function LoadDataFromTbl(): Boolean;
-    function LoadJsonAxis(AFileName: string):Boolean;
-    function LoadJsonDataVolume(AFileName: string):Boolean;
     function LoadDataFromJSON(): Boolean;
-    function LoadData(): Boolean;
 
+    function LoadData(): Boolean;
     // общая проверка размерностей введенных данных
     function CheckData(): Boolean;
 
@@ -109,11 +107,7 @@ type
     function GetParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;override;
     constructor Create(Owner: TObject);override;
     destructor Destroy;override;
-
-    // TODO - выяснить, что это было?
-    function GetOutParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;override;
-    function ReadParam(ID: NativeInt;ParamType:TDataType;DestData: Pointer;DestDataType: TDataType;MoveData:TMoveProc):boolean;override;
-  end;
+end;
 
 /////////////////////////////////////////////////////////////////////
 //Блок многомерной линейной интерполяции
@@ -138,11 +132,11 @@ type
    u_,v_:         TExtArray;
    ad_,k_:        TIntArray;
 
+   DataOk: Boolean; // данные корректны, их можно использовать для расчета
    DataLength: Integer;// длина загруженных данных
    function LoadDataFromProperties(): Boolean;
    function LoadDataFromJSON(): Boolean;
    function LoadData(): Boolean;
-
    // общая проверка размерностей введенных данных
    function CheckData(): Boolean;
 
@@ -156,7 +150,7 @@ type
  ///////////////////////////////////////////////////////////////////////
 implementation
 
-uses RealArrays,JSON,IOUtils;
+uses RealArrays{$IFNDEF FPC},JSON,IOUtils{$ENDIF};
 
 const
   // назначения входных портов для интерполяции на плоскости
@@ -358,6 +352,7 @@ begin
   DataLength:=Farr_data.Count;
 end;
 //----------------------------------------------------------------------------
+{$IFNDEF FPC}
 function TInterpolBlock1d.LoadDataFromJSON(): Boolean;
 var
   str1,str2: string;
@@ -401,10 +396,17 @@ begin
 
   if Assigned(jso) then FreeAndNil(jso);
 end;
-
+{$ELSE}
+function TInterpolBlock1d.LoadDataFromJSON(): Boolean;
+begin
+  Result:=False;
+end;
+{$ENDIF}
 //---------------------------------------------------------------------------
 function TInterpolBlock1d.LoadData(): Boolean;
 begin
+  DataOk:=False;
+
   case InputMode of
     0:
       Result := LoadDataFromProperties();
@@ -416,6 +418,7 @@ begin
         if not Result then Result := LoadDataFromFile();
         if not Result then begin
           ErrorEvent(txtFileError1+FileName+txtFileError2, msError, VisualObject);
+          exit;
           end;
       end;
     3:
@@ -423,8 +426,13 @@ begin
     else begin
       Result := False;
       Assert(False,'TInterpolBlock1d метод задания функции не реализован');
+      exit;
     end;
   end;
+
+  if Result then Result:=CheckData();
+  if Result then DataOk:=True;
+
 
   // проверяем, есть ли в аргументах Х дубликаты
   if TExtArray_HasDuplicates(Xarr_data) then begin
@@ -448,7 +456,7 @@ begin
     i_GetCount: //Получить размерности входов\выходов
       begin
 
-        if not(LoadData() and CheckData()) then begin // Загружаем, там необходимая информация о NPoints
+        if not LoadData() then begin // Загружаем, там необходимая информация о NPoints
           Result := r_Fail;
           exit;
           end;
@@ -587,7 +595,7 @@ begin
     f_InitState: //Запись начальных состояний
       begin
 
-        if not(LoadData() and CheckData()) then begin
+        if not LoadData() then begin
           Result := r_Fail;
           exit;
           end;
@@ -598,6 +606,11 @@ begin
     f_UpdateOuts,
     f_GoodStep:
       begin
+        if not DataOk then begin
+          Result:=r_Fail;
+          exit;
+          end;
+
         // U[0] - args - всегда значение аргумента X
         c := 0;
         SetPxPy(); // устанавливаем указатели на начало данных
@@ -798,9 +811,7 @@ begin
   x1_inRange := ((aX1>=table.px1[0])and(aX1<=table.px1[table.Arg1Count-1]));
   x2_inRange := ((aX2>=table.px2[0])and(aX2<=table.px2[table.Arg2Count-1]));
 
-  // TODO -
-  //if (x1_inRange and x2_inRange) then begin //- по идее должно быть так - обсудить
-  if (x1_inRange or x2_inRange) then begin // в диапазоне, экстраполяция не требуется
+  if (x1_inRange and x2_inRange) then begin //в диапазоне, экстраполяция не требуется
     Result := True;
     exit;
     end;
@@ -897,12 +908,14 @@ begin
   Result := True;
 end;
 //----------------------------------------------------------------------------
-function TInterpolBlockXY.LoadJsonAxis(AFileName: string):Boolean;
+{$IFNDEF FPC}
+function TInterpolBlockXY.LoadDataFromJson():Boolean;
 var
   str1: string;
   jso: TJSONObject;
+  jsv: TJSONValue;
   jarr: TJSONArray;
-  j,x1count,x2count: Integer;
+  i,j,x1count,x2count,jarrCount: Integer;
   arrValue: TJSONValue;
 begin
   Result := True;
@@ -910,7 +923,7 @@ begin
   jso := nil;
 
   try
-    str1 := TFILE.ReadAllText(ExpandFileName(AFileName));
+    str1 := TFILE.ReadAllText(ExpandFileName(FileName));
     jso := TJSONObject.ParseJSONValue(str1) as TJSONObject;
 
     // подгружаем ось Х1
@@ -932,30 +945,6 @@ begin
       arrValue := jarr.Items[j];
       table.px2[j]:=StrToFloat(arrValue.AsType<string>);
       end;
-
-  except
-    Result := False;
-  end;
-
-  if Assigned(jso) then FreeAndNil(jso);
-end;
-//----------------------------------------------------------------------------
-function TInterpolBlockXY.LoadJsonDataVolume(AFileName: string):Boolean;
-var
-  str1: string;
-  jso: TJSONObject;
-  jsv: TJSONValue;
-  jarr: TJSONArray;
-  i,j,jarrCount,x1count,x2count: Integer;
-  arrValue: TJSONValue;
-begin
-  Result := True;
-  DataLength:=0;
-  jso := nil;
-
-  try
-    str1 := TFILE.ReadAllText(ExpandFileName(AFileName));
-    jso := TJSONObject.ParseJSONValue(str1) as TJSONObject;
 
     // подгружаем тело функции
     jsv := jso.GetValue('dataVolume');
@@ -983,11 +972,12 @@ begin
 
   if Assigned(jso) then FreeAndNil(jso);
 end;
-//---------------------------------------------------------------------------
-function TInterpolBlockXY.LoadDataFromJSON(): Boolean;
+{$ELSE}
+function TInterpolBlockXY.LoadDataFromJson():Boolean;
 begin
-  Result := (LoadJsonAxis(FileName) and LoadJsonDataVolume(FileName));
+  Result:=False;
 end;
+{$ENDIF}
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.LoadDataFromTbl(): Boolean;
 begin
@@ -1000,40 +990,39 @@ begin
     Result:=False;
     exit;
     end;
-  DataLength:=table.px1.Count*table.px2.Count;
 
+  DataLength:=table.py.CountX*table.py.GetMaxCountY;
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.LoadData(): Boolean;
 begin
-case inputMode of
-  0:// ввести вручную через свойства
-    Result:=LoadDataFromProperties();
-  1:// в разных файлах
-    Result:=LoadDataFrom3Files();
-  2:// в одном файле
-    begin
-      Result:=LoadDataFromJSON();
-      if Result then exit; //  успешно подгрузили из JSON
 
-      Result:=LoadDataFromTbl();
-      if not Result then begin
-        ErrorEvent(txtFileError1+FileName+txtFileError2,msError,VisualObject);
-        end;
-    end;
-  3:// через порты
-    Result:=LoadDataFromPorts();
-  else
-    Assert(False,'TInterpolBlockXY метод задания функции не реализован');
-    Result:=False;
-    exit;
-  end;
+  DataOk:=False;
+  case inputMode of
+    0:// ввести вручную через свойства
+      Result:=LoadDataFromProperties();
+    1:// в разных файлах
+      Result:=LoadDataFrom3Files();
+    2:// в одном файле
+      begin
+        Result:=LoadDataFromJSON();
 
-  if not Result then begin
-    table.px1.ChangeCount(0);
-    table.px2.ChangeCount(0);
-    table.py.ChangeCount(0,0);
+        if not Result then Result:=LoadDataFromTbl();
+        if not Result then begin
+          ErrorEvent(txtFileError1+FileName+txtFileError2,msError,VisualObject);
+          exit;
+          end;
+      end;
+    3:// через порты
+      Result:=LoadDataFromPorts();
+    else
+      Assert(False,'TInterpolBlockXY метод задания функции не реализован');
+      Result:=False;
+      exit;
     end;
+
+  if Result then Result:=CheckData();
+  if Result then DataOk:=True;
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.CheckData(): Boolean;
@@ -1054,7 +1043,7 @@ begin
     i_GetPropErr:
           begin
             //Загрузка данных из файла с таблицей
-             if not ( LoadData() and CheckData()) then begin
+             if not LoadData() then begin
                Result:=r_Fail;
                exit;
              end;
@@ -1087,7 +1076,7 @@ begin
     f_InitState:  // можно сделать общую загрузку и проверки для режимов файла
       begin
        //Загрузка данных из файла с таблицей
-       if not ( LoadData() and CheckData()) then begin
+       if not LoadData() then begin
          Result:=r_Fail;
          exit;
         end;
@@ -1098,6 +1087,11 @@ begin
     f_RestoreOuts,
     f_GoodStep:
       begin
+
+        if not DataOk then begin
+          Result:=r_Fail;
+          exit;
+          end;
 
         case InterpolationType of
 
@@ -1147,48 +1141,6 @@ begin
   end
 end;
 //--------------------------------------------------------------------------
-// TODO - зачем это так сделано? выяснить.
-function TInterpolBlockXY.GetOutParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;
-begin
-  Result:=inherited GetOutParamID(ParamName, DataType, IsConst);
-  if Result = -1 then begin
-    if StrEqu(ParamName,'py_') then begin
-      Result:=11;
-      DataType:=dtMatrix;
-    end
-    else
-    if StrEqu(ParamName,'px1_') then begin
-      Result:=12;
-      DataType:=dtDoubleArray;
-    end
-    else
-    if StrEqu(ParamName,'px2_') then begin
-      Result:=13;
-      DataType:=dtDoubleArray;
-    end
-  end;
-end;
-//----------------------------------------------------------------------------
-function TInterpolBlockXY.ReadParam(ID: NativeInt;ParamType:TDataType;DestData: Pointer;DestDataType: TDataType;MoveData:TMoveProc):boolean;
-// var i: integer;
-begin
-  Result:=inherited ReadParam(ID,ParamType,DestData,DestDataType,MoveData);
-  if not Result then
-  case ID of
-    11: if table <> nil then begin
-          MoveData(table.py,dtMatrix,DestData,DestDataType);
-          Result:=True;
-        end;
-    12: if table <> nil then begin
-          MoveData(table.px1,dtDoubleArray,DestData,DestDataType);
-          Result:=True;
-        end;
-    13: if table <> nil then begin
-          MoveData(table.px2,dtDoubleArray,DestData,DestDataType);
-          Result:=True;
-        end;
-  end;
-end;
 /////////////////////////////////////////////////////////////////////////////
 
 constructor  TInterpolBlockMultiDim.Create;
@@ -1238,7 +1190,7 @@ begin
   case Action of
     i_GetPropErr: // проверка размерностей
       begin
-        if not (LoadData() and CheckData()) then begin
+        if not LoadData() then begin
               Result:=r_Fail;
               exit;
               end;
@@ -1265,10 +1217,11 @@ begin
 
     i_GetCount:
       begin
-        if not( LoadData()and CheckData()) then begin
+        if not LoadData() then begin
           Result:=r_Fail;
           exit;
           end;
+
           //Размерность выхода = размерность входа делённая на размерность матрицы абсцисс
           cY[0].Dim:= SetDim([ GetFullDim(cU[0].Dim) div Xtable.CountX ]);
           //Условие кратности рзмерности
@@ -1288,7 +1241,7 @@ begin
   case Action of
     f_InitObjects:
       begin
-        if not( LoadData()and CheckData()) then begin
+        if not LoadData() then begin
           Result:=r_Fail;
           exit;
           end;
@@ -1309,6 +1262,12 @@ begin
     f_UpdateJacoby,
     f_GoodStep:
       begin
+
+        if not DataOk then begin
+          Result:=r_Fail;
+          exit;
+          end;
+
         j:=0;
         // копируем аргумент из входного вектора U во временное хранилище
         for i := 0 to tmpXp.CountX - 1 do begin
@@ -1329,6 +1288,8 @@ end;
 //--------------------------------------------------------------------------
 function TInterpolBlockMultiDim.LoadData(): Boolean;
 begin
+  DataOk:=False;
+
   case inputMode of
   0:
     Result := LoadDataFromProperties();
@@ -1337,14 +1298,19 @@ begin
     Result := LoadDataFromJSON();
     if not Result then begin
       ErrorEvent(txtFileError1+FileName+txtFileError2, msError, VisualObject);
+      exit;
       end;
     end
    else
     begin
       Assert(False,'TInterpolBlockMultiDim метод задания многомерной функции не реализован');
       Result:=False;
+      exit;
     end;
   end;
+
+  if Result then Result:=CheckData();
+  if Result then DataOk:=True; // данные корректно загружены
 end;
 //---------------------------------------------------------------------------
 function TInterpolBlockMultiDim.CheckData(): Boolean;
@@ -1367,6 +1333,7 @@ begin
 
 end;
 //---------------------------------------------------------------------------
+{$IFNDEF FPC}
 function TInterpolBlockMultiDim.LoadDataFromJSON(): Boolean;
 var
   str1,str2: string;
@@ -1427,6 +1394,13 @@ begin
 
   if Assigned(jso) then FreeAndNil(jso);
 end;
+{$ELSE}
+function TInterpolBlockMultiDim.LoadDataFromJSON(): Boolean;
+begin
+  Result:=False;
+end;
+{$ENDIF}
+
 //---------------------------------------------------------------------------
 function TInterpolBlockMultiDim.LoadDataFromProperties(): Boolean;
 begin

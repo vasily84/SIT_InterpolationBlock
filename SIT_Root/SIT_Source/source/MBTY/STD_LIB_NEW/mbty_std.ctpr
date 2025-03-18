@@ -39,7 +39,7 @@
         <PackageName Value="adLCLBase"/>
       </Item1>
     </RequiredPackages>
-    <Units Count="20">
+    <Units Count="19">
       <Unit0>
         <Filename Value="mbty_std.dpr"/>
         <IsPartOfProject Value="True"/>
@@ -109,17 +109,13 @@
         <IsPartOfProject Value="True"/>
       </Unit16>
       <Unit17>
-        <Filename Value="InterpolationBlocks.pas"/>
+        <Filename Value="Interpol_Blocks.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit17>
       <Unit18>
-        <Filename Value="Keybrd.pas"/>
+        <Filename Value="RealArrays_Utils.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit18>
-      <Unit19>
-        <Filename Value="NewNDInterpol.pas"/>
-        <IsPartOfProject Value="True"/>
-      </Unit19>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
