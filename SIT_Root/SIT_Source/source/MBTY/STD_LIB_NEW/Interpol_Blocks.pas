@@ -150,7 +150,7 @@ type
  ///////////////////////////////////////////////////////////////////////
 implementation
 
-uses RealArrays{$IFNDEF FPC},JSON,IOUtils{$ENDIF};
+uses RealArrays{$IFNDEF FPC},JSON,IOUtils{$ELSE},fpJson,JsonParser{$ENDIF};
 
 const
   // назначения входных портов для интерполяции на плоскости
@@ -363,7 +363,7 @@ var
 begin
   Result := True;
   jso := nil;
-
+  DataLength := 0;
   try
     str1 := TFILE.ReadAllText(ExpandFileName(FileName));
     jso := TJSONObject.ParseJSONValue(str1) as TJSONObject;
@@ -384,7 +384,7 @@ begin
     jarr := jso.GetValue(str2) as TJSONArray;
     jarrCount:=jarr.Count;
     Farr_data.Count := jarrCount;
-
+    DataLength := jarrCount;
     for j := 0 to jarrCount - 1 do begin
       arrValue := jarr.Items[j];
       Farr_data[j]:=StrToFloat(arrValue.AsType<string>);
@@ -398,8 +398,46 @@ begin
 end;
 {$ELSE}
 function TInterpolBlock1d.LoadDataFromJSON(): Boolean;
+var
+  jso: TJSONObject;
+  jarr: TJSONArray;
+  i,j,x1count,x2count,jarrCount: Integer;
+  slist1:TStringList;
+  str1:string;
 begin
-  Result:=False;
+	Result:=True;
+  DataLength:=0;
+  slist1:=TStringList.Create;
+  slist1.LoadFromFile(ExpandFileName(FileName));
+  str1:=slist1.Text;
+  FreeAndNil(slist1);
+
+  jso := TJSONObject(GetJSON(str1));
+  try
+    // подгружаем ось Х
+    jarr := jso.Arrays['axis1'];
+    jarrCount:=jarr.Count;
+    Xarr_data.Count := jarrCount;
+
+    for j := 0 to jarrCount - 1 do begin
+      Xarr_data[j]:=jarr.Floats[j];
+      end;
+
+    // читаем dataVolume
+    jarr := jso.Arrays['dataVolume'];
+    jarrCount:=jarr.Count;
+    Farr_data.Count := jarrCount;
+    DataLength:= jarrCount;
+
+    for j := 0 to jarrCount - 1 do begin
+      Farr_data[j]:=jarr.Floats[j];
+      end;
+
+  except
+    Result:=False;
+  end;
+
+	if Assigned(jso) then FreeAndNil(jso);
 end;
 {$ENDIF}
 //---------------------------------------------------------------------------
@@ -974,8 +1012,56 @@ begin
 end;
 {$ELSE}
 function TInterpolBlockXY.LoadDataFromJson():Boolean;
+var
+  jso: TJSONObject;
+  jarr: TJSONArray;
+  i,j,x1count,x2count,jarrCount: Integer;
+  slist1:TStringList;
+  str1:string;
 begin
-  Result:=False;
+	Result:=True;
+  DataLength:=0;
+  slist1:=TStringList.Create;
+  slist1.LoadFromFile(ExpandFileName(FileName));
+  str1:=slist1.Text;
+  FreeAndNil(slist1);
+
+  jso := TJSONObject(GetJSON(str1));
+  try
+    // подгружаем ось Х1
+    jarr := jso.Arrays['axis1'];
+    x1Count:=jarr.Count;
+    table.Arg1Count := x1Count;
+
+    for j := 0 to x1Count - 1 do begin
+      table.px1[j]:=jarr.Floats[j];
+      end;
+
+    // подгружаем ось Х2
+    jarr := jso.Arrays['axis2'];
+    x2Count:=jarr.Count;
+    table.Arg2Count := x2Count;
+
+    for j := 0 to x2Count - 1 do begin
+      table.px2[j]:=jarr.Floats[j];
+      end;
+
+    // читаем dataVolume
+    table.py.ChangeCount(x1Count,x2Count);
+    DataLength:=0;
+
+    jarr:=jso.Arrays['dataVolume'];
+
+    for i:=0 to x1count-1 do
+    for j := 0 to x2count-1 do begin
+      table.py[i][j]:=jarr.Floats[DataLength];
+      inc(DataLength);
+      end;
+  except
+    Result:=False;
+  end;
+
+	if Assigned(jso) then FreeAndNil(jso);
 end;
 {$ENDIF}
 //----------------------------------------------------------------------------
@@ -1396,8 +1482,64 @@ begin
 end;
 {$ELSE}
 function TInterpolBlockMultiDim.LoadDataFromJSON(): Boolean;
+var
+  jso: TJSONObject;
+  jarr: TJSONArray;
+  i,j,axisCount,jarrCount: Integer;
+  slist1:TStringList;
+  str1,str2:string;
 begin
-  Result:=False;
+	Result:=True;
+  DataLength:=0;
+  slist1:=TStringList.Create;
+  slist1.LoadFromFile(ExpandFileName(FileName));
+  str1:=slist1.Text;
+  FreeAndNil(slist1);
+
+  jso := TJSONObject(GetJSON(str1));
+  try
+    // подсчитываем количество осей
+    axisCount:=0;
+    for i:=0 to 10 do begin
+      str2 := 'axis'+IntToStr(i+1);
+      try
+          jarr := jso.Arrays[str2];
+        except
+          jarr:=nil;
+        end;
+      if not Assigned(jarr) then break;
+      inc(axisCount);
+      end;
+    Xtable.ChangeCountX(axisCount);
+
+    // читаем оси
+    for i:=0 to axisCount-1 do begin
+      str2:='axis'+IntToStr(i+1);
+      jarr := jso.Arrays[str2];
+      jarrCount:=jarr.Count;
+      Xtable[i].ChangeCount(jarrCount);
+
+      for j := 0 to jarrCount - 1 do begin
+        Xtable[i][j]:=jarr.Floats[j];
+    	  end;
+      end;
+
+    // читаем dataVolume
+    str2:='dataVolume';
+    jarr:=jso.Arrays[str2];
+
+    jarrCount := jarr.Count;
+    Ftable.ChangeCount(jarrCount);
+
+    for j := 0 to jarrCount - 1 do begin
+      Ftable[j]:=jarr.Floats[j];
+      inc(DataLength);
+      end;
+  except
+    Result:=False;
+  end;
+
+	if Assigned(jso) then FreeAndNil(jso);
 end;
 {$ENDIF}
 
