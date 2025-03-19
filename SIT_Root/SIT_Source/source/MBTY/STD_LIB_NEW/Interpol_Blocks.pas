@@ -117,7 +117,6 @@ type
    // это свойства
    ExtrapolationType: NativeInt; // ПЕРЕЧИСЛЕНИЕ тип экстраполяции при аргументе за пределами границ
    InterpolationType: NativeInt; // ПЕРЕЧИСЛЕНИЕ метод интерполяции
-
    inputMode: NativeInt; // ПЕРЕЧИСЛЕНИЕ метод задания функции
    FileName: string;
 
@@ -136,9 +135,8 @@ type
    DataLength: Integer;// длина загруженных данных
    function LoadDataFromProperties(): Boolean;
    function LoadDataFromJSON(): Boolean;
-   function LoadData(): Boolean;
-   // общая проверка размерностей введенных данных
-   function CheckData(): Boolean;
+   function LoadData(): Boolean;// загрузить и проверить корректность данных
+   function CheckData(): Boolean;// общая проверка размерностей введенных данных
 
    function       InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
    function       RunFunc(var at,h : RealType;Action:Integer):NativeInt;override;
@@ -191,9 +189,6 @@ const
 constructor TInterpolBlock1d.Create;
 begin
   inherited;
-  // TODO
-  //IsLinearBlock:=True;
-
   prop_X_arr := TExtArray.Create(1); // точки аргументов Xi функции, если она задана через свойства объекта
   prop_F_arr:= TExtArray.Create(1); // точки значений Fi функции, если она задана через свойства объекта
 
@@ -369,25 +364,21 @@ begin
     jso := TJSONObject.ParseJSONValue(str1) as TJSONObject;
 
     // подгружаем ось Х
-    str2 := 'axis1';
-    jarr := jso.GetValue(str2) as TJSONArray;
+    jarr := jso.GetValue<TJSONArray>('axis1');
     jarrCount:=jarr.Count;
     Xarr_data.Count := jarrCount;
 
     for j := 0 to jarrCount - 1 do begin
-      arrValue := jarr.Items[j];
-      Xarr_data[j]:=StrToFloat(arrValue.AsType<string>);
+      Xarr_data[j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
       end;
 
     // подгружаем тело функции
-    str2 := 'dataVolume';
-    jarr := jso.GetValue(str2) as TJSONArray;
+    jarr := jso.GetValue<TJSONArray>('dataVolume');
     jarrCount:=jarr.Count;
     Farr_data.Count := jarrCount;
     DataLength := jarrCount;
     for j := 0 to jarrCount - 1 do begin
-      arrValue := jarr.Items[j];
-      Farr_data[j]:=StrToFloat(arrValue.AsType<string>);
+      Farr_data[j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
       end;
 
   except
@@ -493,20 +484,17 @@ begin
   case Action of
     i_GetCount: //Получить размерности входов\выходов
       begin
-
-        if not LoadData() then begin // Загружаем, там необходимая информация о NPoints
-          Result := r_Fail;
-          exit;
-          end;
-
-        {
         if InputMode=3 then begin // для случая задания функции через порты
-          cU[1].Dim:=SetDim([Xarr_data.Count]);
-          cU[2].Dim:=SetDim([Xarr_data.Count]);
+          //cU[2].Dim := cU[1].Dim;
+          if GetFullDim(cU[1].Dim)<GetFullDim(cU[2].Dim) then
+              cU[2].Dim := cU[1].Dim
+            else
+              cU[1].Dim := cU[2].Dim
           end;
-        }
+
         // размерность выходного вектора всегда определена
         cY[0].Dim:=SetDim([GetFullDim(cU[0].Dim)]);
+        //cY[0].Dim:=cU[0].Dim;
       end;
     else
       Result:=inherited InfoFunc(Action,aParameter);
@@ -514,8 +502,7 @@ begin
 end;
 
 //============================================================================
-// TODO!!. Обсудить!! Корректное, ИМХО, использование Лагранжа.
-// точка начала построения полинома Л утанавливается принудительно рядом с инервалом интерполяции
+//точка начала построения полинома Л утанавливается принудительно рядом с инервалом интерполяции
 //============================================================================
 function MyLagrange(var px,py :PExtArr;X:RealType;LagrOrder,NPoints:Integer):RealType;
 //    px - МАССИВ ЗНАЧЕНИЙ АРГУМЕНТА
@@ -620,23 +607,21 @@ begin
   Result := r_Success;
 
   case Action of
+    f_InitState,
     f_InitObjects:
       begin
-        //Здесь устанавливаем нужные размерности вспомогательных таблиц и переменных
-        SetLength(LastInd,GetFullDim(cU[2].Dim));
-        ZeroMemory(Pointer(LastInd), GetFullDim(cU[2].Dim)*SizeOf(NativeInt));
-        SplineArr.ChangeCount(5, Xarr_data.Count);
-        x_stamp.ChangeCount(1, Xarr_data.Count);
-        y_stamp.ChangeCount(1, Xarr_data.Count);
-      end;
-
-    f_InitState: //Запись начальных состояний
-      begin
-
         if not LoadData() then begin
           Result := r_Fail;
           exit;
           end;
+
+        //Здесь устанавливаем нужные размерности вспомогательных таблиц и переменных
+        SetLength(LastInd,GetFullDim(cU[0].Dim));
+        ZeroMemory(Pointer(LastInd), GetFullDim(cU[0].Dim)*SizeOf(NativeInt));
+
+        SplineArr.ChangeCount(5, Xarr_data.Count);
+        x_stamp.ChangeCount(1, Xarr_data.Count);
+        y_stamp.ChangeCount(1, Xarr_data.Count);
       end;
 
     f_RestoreOuts,
@@ -657,11 +642,8 @@ begin
          case InterpolationType of
            3:   // Лагранж
               begin
-                // TODO обсудить Лагранж!!
+
                 for j:=0 to U[0].Count - 1 do begin
-                  // function Lagrange(var X1,Y1 :array of RealType;X:RealType;N,M:Integer):RealType;
-                  // X1 - МАССИВ ЗНАЧЕНИЙ АРГУМЕНТА, Y1 - МАССИВ ЗНАЧЕНИЙ ФУНКЦИИ,
-                  // X - АРГУМЕНТ, N - ПОРЯДОК ПОЛИНОМА, M - HOMEP ЭЛЕМЕНТА, C KOTOPOГO НЕОБХОДИМО НАЧАТЬ ИНТЕРПОЛЯЦИЮ
                   if checkX_range(U[0].Arr^[j],Yvalue) then begin
                       //Y[0].arr^[i*U[0].Count+j] := Lagrange(px^,py^,U[0].arr^[j],LagrangeOrder,1);
                       Y[0].arr^[i*U[0].Count+j] := MyLagrange(px,py,U[0].arr^[j],LagrangeOrder,Xarr_data.Count);
@@ -875,9 +857,9 @@ var
   f: RealType;
 begin
   DataLength:=0;
+
   N := U[ROW_ARGS_ARR].Count;
   M := U[COL_ARGS_ARR].Count;
-
 
   table.Arg1Count := N;
   table.Arg2Count := M;
@@ -965,28 +947,25 @@ begin
     jso := TJSONObject.ParseJSONValue(str1) as TJSONObject;
 
     // подгружаем ось Х1
-    jarr := jso.GetValue('axis1') as TJSONArray;
+    jarr := jso.GetValue<TJSONArray>('axis1');
     x1Count:=jarr.Count;
     table.Arg1Count := x1Count;
 
     for j := 0 to x1Count - 1 do begin
-      arrValue := jarr.Items[j];
-      table.px1[j]:=StrToFloat(arrValue.AsType<string>);
+      table.px1[j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
       end;
 
     // подгружаем ось Х2
-    jarr := jso.GetValue('axis2') as TJSONArray;
+    jarr := jso.GetValue<TJSONArray>('axis2');
     x2Count:=jarr.Count;
     table.Arg2Count := x2Count;
 
     for j := 0 to x2Count - 1 do begin
-      arrValue := jarr.Items[j];
-      table.px2[j]:=StrToFloat(arrValue.AsType<string>);
+      table.px2[j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
       end;
 
     // подгружаем тело функции
-    jsv := jso.GetValue('dataVolume');
-    jarr := jsv as TJSONArray;
+    jarr := jso.GetValue<TJSONArray>('dataVolume');
     jarrCount := jarr.Count;
 
     x1Count := table.px1.Count;
@@ -998,10 +977,10 @@ begin
 
     table.py.ChangeCount(x1Count,x2Count);
     DataLength:=0;
+
     for i:=0 to x1count-1 do
     for j := 0 to x2count-1 do begin
-      arrValue := jarr.Items[DataLength];
-      table.py[i][j]:=StrToFloat(arrValue.AsType<string>);
+      table.py[i][j]:=jarr.Items[DataLength].AsType<TJSONNumber>.AsDouble;
       inc(DataLength);
       end;
   except
@@ -1082,7 +1061,6 @@ end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.LoadData(): Boolean;
 begin
-
   DataOk:=False;
   case inputMode of
     0:// ввести вручную через свойства
@@ -1115,36 +1093,42 @@ function TInterpolBlockXY.CheckData(): Boolean;
 begin
   Result := (table.px1.Count*table.px2.Count=DataLength);
   if not Result then begin
-    //ErrorEvent(txtErrorReadTable,msError,VisualObject); // "не удалось получить данные из таблицы"
     ErrorEvent(txtDimError,msError,VisualObject);
     exit;
     end;
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;
+var
+  M,N,T: Integer;
 begin
   Result:=r_Success;
   case Action of
-    i_GetInit,
-    i_GetPropErr:
-          begin
-            //Загрузка данных из файла с таблицей
-             if not LoadData() then begin
-               Result:=r_Fail;
-               exit;
-             end;
-          end;
     i_GetCount:
+          begin
           // устанавливает одинаковые количества rows cols
-          if Length(cU) > 1 then begin
+          if Length(cU) > 1 then begin  // TODO проверить, должно быть установление меньшего?
               if GetFullDim( cU[1].Dim ) > GetFullDim( cU[0].Dim ) then
                  cU[0].Dim:=cU[1].Dim
               else
                  cU[1].Dim:=cU[0].Dim;
              cY[0]:=cU[0];
-           end
-           else
-             Result:=r_Fail;
+            end;
+
+          // при задании через порты проверяем их размерность
+          if Length(cU) > FUNCS_TABLE  then begin
+            N := GetFullDim(cU[ROW_ARGS_ARR].Dim);
+            M := GetFullDim(cU[COL_ARGS_ARR].Dim);
+            T := GetFullDim(cU[FUNCS_TABLE].Dim);
+
+            if(M*N<>T) then begin
+              ErrorEvent(txtDimError, msError, VisualObject);
+              Result:=r_Fail;
+              exit;
+              end;
+
+            end;
+          end;
   else
     Result:=inherited InfoFunc(Action,aParameter);
   end;
@@ -1161,7 +1145,7 @@ begin
     f_InitObjects,
     f_InitState:  // можно сделать общую загрузку и проверки для режимов файла
       begin
-       //Загрузка данных из файла с таблицей
+       //Загрузка данных из файла с таблицей или портов
        if not LoadData() then begin
          Result:=r_Fail;
          exit;
@@ -1173,7 +1157,6 @@ begin
     f_RestoreOuts,
     f_GoodStep:
       begin
-
         if not DataOk then begin
           Result:=r_Fail;
           exit;
@@ -1342,8 +1325,15 @@ begin
         k_.Count  := Xtable.CountX;
       end;
 
+    f_InitState:
+      begin
+      if not CheckData() then begin
+          Result:=r_Fail;
+          exit;
+          end;
+      end;
+
     f_RestoreOuts,
-    f_InitState,
     f_UpdateOuts,
     f_UpdateJacoby,
     f_GoodStep:
@@ -1359,7 +1349,7 @@ begin
         for i := 0 to tmpXp.CountX - 1 do begin
           Move(U[0].Arr^[j],tmpXp[i].Arr^[0],tmpXp[i].Count*SizeOfDouble);
           inc(j,tmpXp[i].Count);
-        end;
+          end;
 
 
         case InterpolationType of
@@ -1442,7 +1432,11 @@ begin
     axisCount:=0;
     for i:=0 to 10 do begin
       str2 := 'axis'+IntToStr(i+1);
-      jarr := jso.GetValue(str2) as TJSONArray;
+      try
+          jarr := jso.GetValue<TJSONArray>(str2);
+        except
+          jarr:=nil;
+        end;
       if not Assigned(jarr) then break;
 
       inc(axisCount);
@@ -1451,13 +1445,12 @@ begin
     Xtable.ChangeCountX(axisCount);
     for i:=0 to axisCount-1 do begin
       str2 := 'axis'+IntToStr(i+1);
-      jarr := jso.GetValue(str2) as TJSONArray;
+      jarr := jso.GetValue<TJSONArray>(str2);
       jarrCount:=jarr.Count;
       Xtable[i].ChangeCount(jarrCount);
 
       for j := 0 to jarrCount - 1 do begin
-        arrValue := jarr.Items[j];
-        Xtable[i][j]:=StrToFloat(arrValue.AsType<string>);
+        Xtable[i][j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
         end;
 
       end;
@@ -1469,8 +1462,7 @@ begin
     Ftable.ChangeCount(jarrCount);
 
     for j := 0 to jarrCount - 1 do begin
-      arrValue := jarr.Items[j];
-      Ftable[j]:=StrToFloat(arrValue.AsType<string>);
+      Ftable[j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
       inc(DataLength);
       end;
 
