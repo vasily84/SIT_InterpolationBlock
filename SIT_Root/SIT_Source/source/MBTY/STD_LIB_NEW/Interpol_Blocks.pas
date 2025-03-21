@@ -20,7 +20,7 @@ interface
 
 uses {$IFNDEF FPC}Windows,{$ENDIF}
      Classes, MBTYArrays, DataTypes, DataObjts, SysUtils, abstract_im_interface, RunObjts, Math, LinFuncs,
-     tbls, Data_blocks, InterpolFuncs, mbty_std_consts, uExtMath,RealArrays_Utils;
+     tbls, Data_blocks, InterpolFuncs, mbty_std_consts, RealArrays_Utils;
 
 type
 /////////////////////////////////////////////////////////////////////////////
@@ -28,34 +28,31 @@ type
   TInterpolBlock1d = class(TRunObject)
   protected
     // ПЕРЕЧИСЛЕНИЕ откуда берем входные данные
-    InputMode: NativeInt;
-    ExtrapolationType: NativeInt;   // ПЕРЕЧИСЛЕНИЕ тип экстраполяции за пределами определения функции - константа,ноль, интерполяция по крайним точкам
+    fInputMode: NativeInt;
+    fExtrapolationType: NativeInt;   // ПЕРЕЧИСЛЕНИЕ тип экстраполяции за пределами определения функции - константа,ноль, интерполяция по крайним точкам
+    fInterpolationType, //ПЕРЕЧИСЛЕНИЕ тип интерполяции
+    fLagrangeOrder: NativeInt;  // порядок интерполяции для метода Лагранжа
 
-    prop_X_arr: TExtArray; // точки аргументов Xi функции, если она задана через свойства объекта
-    prop_F_arr: TExtArray; // точки значений Fi функции, если она задана через свойства объекта
+    fProp_Xarr: TExtArray; // точки аргументов Xi функции, если она задана через свойства объекта
+    fProp_Farr: TExtArray; // точки значений Fi функции, если она задана через свойства объекта
 
-    //ПЕРЕЧИСЛЕНИЕ тип интерполяции
-    InterpolationType,
-    LagrangeOrder,  // порядок интерполяции для метода Лагранжа
-    nport: NativeInt; // свойство для изменения числа видимых портов
-    
-    FileName: string; // имя единого входного файла
-    FileNameArgs: string; // имя входного файла для аргументов при раздельной загрузке
-    FileNameVals: string; // имя входного файла для значений функции при раздельной загрузке
+    fFileName: string; // имя единого входного файла
+    fFileNameArgs: string; // имя входного файла для аргументов при раздельной загрузке
+    fFileNameVals: string; // имя входного файла для значений функции при раздельной загрузке
 
-    prop_IsNaturalSpline: Boolean;
-    SplineArr: TExtArray2;
+    fIsNaturalSpline: Boolean;
+    fSplineArr: TExtArray2;
 
     // последний найденный интервал интерполяции при вызове функции Interpol
-    LastInd: array of NativeInt;
+    fLastInd: array of NativeInt;
 
-    Xarr_data, Farr_data: TExtArray; // точки аргументов Xi и значений Fi функции для расчета
+    fXarr_data, fYarr_data: TExtArray; // точки аргументов Xi и значений Fi функции для расчета
 
     // Массивы иcходных данных - реально применяются только для отслеживания изменения входных данных
-    x_stamp,y_stamp: TExtArray2;
+    fX_stamp,fY_stamp: TExtArray2;
 
-    DataLength: Integer;
-    DataOk: Boolean;
+    fDataLength: Integer;
+    fDataOk: Boolean;
     function LoadDataFromProperties(): Boolean;
     function LoadDataFrom2Files(): Boolean;
     function LoadDataFromFile(): Boolean;
@@ -78,18 +75,16 @@ type
 type
   TInterpolBlockXY = class(TRunObject)
   protected
-    table: TTable2;
-  public
-    fileName,FileNameRows,FileNameCols,FileNameVals: string;
-    InterpolationType: NativeInt;
-    ExtrapolationType: NativeInt;
-    inputMode: NativeInt;
-    nport: NativeInt;
-    prop_X1_arr, prop_X2_arr: TExtArray;
-    prop_DataTable: TExtArray2;
+    fTable: TTable2;
+    fFileName,fFileNameRows,fFileNameCols,fFileNameVals: string;
+    fInterpolationType: NativeInt;
+    fExtrapolationType: NativeInt;
+    fInputMode: NativeInt;
+    fProp_X1arr, fProp_X2arr: TExtArray;
+    fProp_DataTable: TExtArray2;
 
-    DataLength: Integer;
-    DataOk: Boolean;
+    fDataLength: Integer;
+    fDataOk: Boolean;
     // функции загрузки значений в table. Возвращает True при успешной загрузке
     function LoadDataFromPorts(): Boolean;
     function LoadDataFromProperties(): Boolean;
@@ -100,8 +95,9 @@ type
     function LoadData(): Boolean;
     // общая проверка размерностей введенных данных
     function CheckData(): Boolean;
-
     function checkXY_Range(var aX1,aX2: RealType;var aZvalue: RealType): Boolean;
+
+  public
     function InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
     function RunFunc(var at,h : RealType;Action:Integer):NativeInt;override;
     function GetParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;override;
@@ -113,31 +109,32 @@ end;
 //Блок многомерной линейной интерполяции
 type
   TInterpolBlockMultiDim = class(TRunObject)
-  public
+  protected
    // это свойства
-   ExtrapolationType: NativeInt; // ПЕРЕЧИСЛЕНИЕ тип экстраполяции при аргументе за пределами границ
-   InterpolationType: NativeInt; // ПЕРЕЧИСЛЕНИЕ метод интерполяции
-   inputMode: NativeInt; // ПЕРЕЧИСЛЕНИЕ метод задания функции
-   FileName: string;
+   fExtrapolationType: NativeInt; // ПЕРЕЧИСЛЕНИЕ тип экстраполяции при аргументе за пределами границ
+   fInterpolationType: NativeInt; // ПЕРЕЧИСЛЕНИЕ метод интерполяции
+   fInputMode: NativeInt; // ПЕРЕЧИСЛЕНИЕ метод задания функции
+   fFileName: string;
 
-   prop_X: TExtArray2; // матрица аргументов по размерностям
-   prop_F: TExtArray;  // Вектор значений функции
+   fProp_X: TExtArray2; // матрица аргументов по размерностям
+   fProp_F: TExtArray;  // Вектор значений функции
 
-   Xtable: TExtArray2; // матрица аргументов по размерностям
-   Ftable: TExtArray;  // Вектор значений функции
+   fXtable: TExtArray2; // матрица аргументов по размерностям
+   fFtable: TExtArray;  // Вектор значений функции
 
    // это внутренние переменные
-   tmpXp:         TExtArray2; // для Аргумента функции, считанного из входа U
-   u_,v_:         TExtArray;
-   ad_,k_:        TIntArray;
+   ftempXp:         TExtArray2; // для Аргумента функции, считанного из входа U
+   fU_,fV_:         TExtArray;
+   fAd_,fK_:        TIntArray;
 
-   DataOk: Boolean; // данные корректны, их можно использовать для расчета
-   DataLength: Integer;// длина загруженных данных
+   fDataOk: Boolean; // данные корректны, их можно использовать для расчета
+   fDataLength: Integer;// длина загруженных данных
    function LoadDataFromProperties(): Boolean;
    function LoadDataFromJSON(): Boolean;
    function LoadData(): Boolean;// загрузить и проверить корректность данных
    function CheckData(): Boolean;// общая проверка размерностей введенных данных
 
+  public
    function       InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
    function       RunFunc(var at,h : RealType;Action:Integer):NativeInt;override;
    function       GetParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;override;
@@ -148,7 +145,7 @@ type
  ///////////////////////////////////////////////////////////////////////
 implementation
 
-uses RealArrays{$IFNDEF FPC},JSON,IOUtils{$ELSE},fpJson,JsonParser{$ENDIF};
+uses RealArrays{$IFNDEF FPC},JSON,IOUtils,Generics.Collections{$ELSE},fpJson,JsonParser{$ENDIF};
 
 const
   // назначения входных портов для интерполяции на плоскости
@@ -160,21 +157,16 @@ const
 
 const
 {$IFNDEF ENG}
-  txtParamUnknown1 = 'параметр "';
-  txtParamUnknown2 = '" в блоке не найден';
-
   txtFiXiDimError = 'Число значений F и аргументов X входной функции не совпадает';
   txtFileError1 = 'Файл ';
   txtFileError2 = ' невозможно считать';
 
   txtDimError = 'Некорректная размерность входных данных';
-  
+
   txtXiduplicates = 'таблица значений функции содержит дубликаты аргумента';
   txtFuncTableReordered = 'таблица значений функции переупорядочена по возрастанию аргумента';
 
 {$ELSE}
-  txtParamUnknown1 = 'parameter "';
-  txtParamUnknown2 = '" is undefined';
   txtFiXiDimError = 'The number of values of F and arguments X of the input function does not match';
   txtFileError1 = 'File ';
   txtFileError2 = ' reading failed';
@@ -189,30 +181,30 @@ const
 constructor TInterpolBlock1d.Create;
 begin
   inherited;
-  prop_X_arr := TExtArray.Create(1); // точки аргументов Xi функции, если она задана через свойства объекта
-  prop_F_arr:= TExtArray.Create(1); // точки значений Fi функции, если она задана через свойства объекта
+  fProp_Xarr := TExtArray.Create(1); // точки аргументов Xi функции, если она задана через свойства объекта
+  fProp_Farr:= TExtArray.Create(1); // точки значений Fi функции, если она задана через свойства объекта
 
-  SplineArr := TExtArray2.Create(1,1);
-  x_stamp := TExtArray2.Create(1,1);
-  y_stamp := TExtArray2.Create(1,1);
+  fSplineArr := TExtArray2.Create(1,1);
+  fX_stamp := TExtArray2.Create(1,1);
+  fY_stamp := TExtArray2.Create(1,1);
 
-  Xarr_data := TExtArray.Create(1); // точки аргументов Xi функции, если она считана из файла
-  Farr_data := TExtArray.Create(1);
+  fXarr_data := TExtArray.Create(1); // точки аргументов Xi функции, если она считана из файла
+  fYarr_data := TExtArray.Create(1);
 end;
 //----------------------------------------------------------------------------
 destructor  TInterpolBlock1d.Destroy;
 begin
-  FreeAndNil(prop_X_arr);
-  FreeAndNil(prop_F_arr);
+  FreeAndNil(fProp_Xarr);
+  FreeAndNil(fProp_Farr);
 
-  FreeAndNil(SplineArr);
-  FreeAndNil(x_stamp);
-  FreeAndNil(y_stamp);
+  FreeAndNil(fSplineArr);
+  FreeAndNil(fX_stamp);
+  FreeAndNil(fY_stamp);
 
-  FreeAndNil(Xarr_data);
-  FreeAndNil(Farr_data);
+  FreeAndNil(fXarr_data);
+  FreeAndNil(fYarr_data);
 
-  if Assigned(LastInd) then SetLength(LastInd, 0);
+  if Assigned(fLastInd) then SetLength(fLastInd, 0);
 
   inherited;
 end;
@@ -224,108 +216,100 @@ begin
 
   // ПЕРЕЧИСЛЕНИЕ откуда берем входные данные
   if StrEqu(ParamName,'InputMode') then begin
-    Result:=NativeInt(@InputMode);
+    Result:=NativeInt(@fInputMode);
     DataType:=dtInteger;
     exit;
     end;
 
   // тип интерполяции - кусочно-постоянная, линейная, Лагранжа и т.п.
   if StrEqu(ParamName,'InterpolationType') then begin
-    Result:=NativeInt(@InterpolationType);
+    Result:=NativeInt(@fInterpolationType);
     DataType:=dtInteger;
     exit;
     end;
 
   // тип экстраполяции за пределами определения функции - константа, кусочно-постоянная и т.д.
   if StrEqu(ParamName,'ExtrapolationType') then begin
-    Result:=NativeInt(@ExtrapolationType);
+    Result:=NativeInt(@fExtrapolationType);
     DataType:=dtInteger;
     exit;
     end;
 
   // порядок интерполяции для метода Лагранжа
   if StrEqu(ParamName,'LagrangeOrder') then begin
-    Result:=NativeInt(@LagrangeOrder);
+    Result:=NativeInt(@fLagrangeOrder);
     DataType:=dtInteger;
     exit;
     end;
 
   if StrEqu(ParamName,'FileName') then begin
-    Result:=NativeInt(@FileName);
+    Result:=NativeInt(@fFileName);
     DataType:=dtString;
     exit;
     end;
 
   if StrEqu(ParamName,'X_arr') then begin
-    Result:=NativeInt(prop_X_arr);
+    Result:=NativeInt(fProp_Xarr);
     DataType:=dtDoubleArray;
     exit;
     end;
 
   if StrEqu(ParamName,'F_arr') then begin
-    Result:=NativeInt(prop_F_arr);
+    Result:=NativeInt(fProp_Farr);
     DataType:=dtDoubleArray;
     exit;
     end;
 
   if StrEqu(ParamName,'FileNameArgs') then begin
-    Result:=NativeInt(@FileNameArgs);
+    Result:=NativeInt(@fFileNameArgs);
     DataType:=dtString;
     exit;
     end;
 
   if StrEqu(ParamName,'FileNameVals') then begin
-    Result:=NativeInt(@FileNameVals);
+    Result:=NativeInt(@fFileNameVals);
     DataType:=dtString;
     exit;
     end;
 
   if StrEqu(ParamName,'IsNaturalSpline') then begin
-    Result:=NativeInt(@prop_IsNaturalSpline);
+    Result:=NativeInt(@fIsNaturalSpline);
     DataType:=dtBool;
     exit;
     end;
 
-  // число дополнительных портов
-  if StrEqu(ParamName,'nport') then begin
-    Result:=NativeInt(@nport);
-    DataType:=dtInteger;
-    exit;
-    end;
-
-  ErrorEvent(txtParamUnknown1+ParamName+txtParamUnknown1, msWarning, VisualObject);
 end;
 
 //---------------------------------------------------------------------------
 function TInterpolBlock1d.LoadDataFromProperties(): Boolean;
 begin
   // копируем
-  TExtArray_cpy(Xarr_data, prop_X_arr);
-  TExtArray_cpy(Farr_data, prop_F_arr);
-  DataLength := Farr_data.Count;
+  TExtArray_cpy(fXarr_data, fProp_Xarr);
+  TExtArray_cpy(fYarr_data, fProp_Farr);
+  fDataLength := fYarr_data.Count;
   Result := True;
 end;
 //---------------------------------------------------------------------------
 function TInterpolBlock1d.LoadDataFrom2Files(): Boolean;
 begin
-  if not Load_TExtArray_FromFile(FileNameArgs, Xarr_data) then begin
-    ErrorEvent(txtFileError1+FileNameArgs+txtFileError2, msError, VisualObject);
+  if not Load_TExtArray_FromFile(fFileNameArgs, fXarr_data) then begin
+    ErrorEvent(txtFileError1+fFileNameArgs+txtFileError2, msError, VisualObject);
     exit(False);
     end;
 
-  if not Load_TExtArray_FromFile(FileNameVals, Farr_data)then begin
-    ErrorEvent(txtFileError1+FileNameVals+txtFileError2, msError, VisualObject);
+  if not Load_TExtArray_FromFile(fFileNameVals, fYarr_data)then begin
+    ErrorEvent(txtFileError1+fFileNameVals+txtFileError2, msError, VisualObject);
     exit(False);
     end;
 
-  DataLength:=Farr_data.Count;
+  fDataLength:=fYarr_data.Count;
   Result := True;
 end;
 //----------------------------------------------------------------------
 
 function TInterpolBlock1d.LoadDataFromFile(): Boolean;
 begin
-  Result := Load_2TExtArrays_FromFile(FileName,Xarr_data,Farr_data);
+  Result := Load_2TExtArrays_FromFile(fFileName,fXarr_data,fYarr_data);
 end;
 
 //============================================================================
@@ -333,7 +317,7 @@ end;
 function TInterpolBlock1d.CheckData(): Boolean;
 begin
   Result := True;
-  if Xarr_data.Count<>Farr_data.Count then begin
+  if fXarr_data.Count<>fYarr_data.Count then begin
     ErrorEvent(txtDimError, msError, VisualObject);
     Result := False;
     end;
@@ -342,43 +326,42 @@ end;
 function TInterpolBlock1d.LoadDataFromPorts(): Boolean;  // stub
 begin
   Result := True;
-  TExtArray_cpy(Xarr_data, U[1]);
-  TExtArray_cpy(Farr_data, U[2]);
-  DataLength:=Farr_data.Count;
+  TExtArray_cpy(fXarr_data, U[1]);
+  TExtArray_cpy(fYarr_data, U[2]);
+  fDataLength:=fYarr_data.Count;
 end;
 //----------------------------------------------------------------------------
 {$IFNDEF FPC}
 function TInterpolBlock1d.LoadDataFromJSON(): Boolean;
 var
-  str1,str2: string;
+  str1: string;
   jso: TJSONObject;
   jarr: TJSONArray;
   j,jarrCount: Integer;
-  arrValue: TJSONValue;
 begin
   Result := True;
   jso := nil;
-  DataLength := 0;
+  fDataLength := 0;
   try
-    str1 := TFILE.ReadAllText(ExpandFileName(FileName));
+    str1 := TFILE.ReadAllText(ExpandFileName(fFileName));
     jso := TJSONObject.ParseJSONValue(str1) as TJSONObject;
 
     // подгружаем ось Х
     jarr := jso.GetValue<TJSONArray>('axis1');
     jarrCount:=jarr.Count;
-    Xarr_data.Count := jarrCount;
+    fXarr_data.Count := jarrCount;
 
     for j := 0 to jarrCount - 1 do begin
-      Xarr_data[j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
+      fXarr_data[j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
       end;
 
     // подгружаем тело функции
     jarr := jso.GetValue<TJSONArray>('dataVolume');
     jarrCount:=jarr.Count;
-    Farr_data.Count := jarrCount;
-    DataLength := jarrCount;
+    fYarr_data.Count := jarrCount;
+    fDataLength := jarrCount;
     for j := 0 to jarrCount - 1 do begin
-      Farr_data[j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
+      fYarr_data[j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
       end;
 
   except
@@ -397,9 +380,9 @@ var
   str1:string;
 begin
 	Result:=True;
-  DataLength:=0;
+  fDataLength:=0;
   slist1:=TStringList.Create;
-  slist1.LoadFromFile(ExpandFileName(FileName));
+  slist1.LoadFromFile(ExpandFileName(fFileName));
   str1:=slist1.Text;
   FreeAndNil(slist1);
 
@@ -408,20 +391,20 @@ begin
     // подгружаем ось Х
     jarr := jso.Arrays['axis1'];
     jarrCount:=jarr.Count;
-    Xarr_data.Count := jarrCount;
+    fXarr_data.Count := jarrCount;
 
     for j := 0 to jarrCount - 1 do begin
-      Xarr_data[j]:=jarr.Floats[j];
+      fXarr_data[j]:=jarr.Floats[j];
       end;
 
     // читаем dataVolume
     jarr := jso.Arrays['dataVolume'];
     jarrCount:=jarr.Count;
-    Farr_data.Count := jarrCount;
-    DataLength:= jarrCount;
+    fFarr_data.Count := jarrCount;
+    fDataLength:= jarrCount;
 
     for j := 0 to jarrCount - 1 do begin
-      Farr_data[j]:=jarr.Floats[j];
+      fFarr_data[j]:=jarr.Floats[j];
       end;
 
   except
@@ -434,9 +417,9 @@ end;
 //---------------------------------------------------------------------------
 function TInterpolBlock1d.LoadData(): Boolean;
 begin
-  DataOk:=False;
+  fDataOk:=False;
 
-  case InputMode of
+  case fInputMode of
     0:
       Result := LoadDataFromProperties();
     1:
@@ -446,7 +429,7 @@ begin
         Result := LoadDataFromJSON();
         if not Result then Result := LoadDataFromFile();
         if not Result then begin
-          ErrorEvent(txtFileError1+FileName+txtFileError2, msError, VisualObject);
+          ErrorEvent(txtFileError1+fFileName+txtFileError2, msError, VisualObject);
           exit;
           end;
       end;
@@ -460,19 +443,19 @@ begin
   end;
 
   if Result then Result:=CheckData();
-  if Result then DataOk:=True;
+  if Result then fDataOk:=True;
 
 
   // проверяем, есть ли в аргументах Х дубликаты
-  if TExtArray_HasDuplicates(Xarr_data) then begin
+  if TExtArray_HasDuplicates(fXarr_data) then begin
     ErrorEvent(txtXiduplicates, msWarning, VisualObject);
     end;
 
   // TODO - сейчас с дубликатами дуркует.
   // проверяем, упорядочены ли точки. При необходимости - упорядочиваем
-  if not TExtArray_IsOrdered(Xarr_data) then begin
+  if not TExtArray_IsOrdered(fXarr_data) then begin
     //ErrorEvent(txtFuncTableReordered, msWarning, VisualObject);
-    TExtArray_Sort_XY_Arr(Xarr_data, Farr_data);
+    TExtArray_Sort_XY_Arr(fXarr_data, fYarr_data);
     end;
 
 end;
@@ -484,7 +467,7 @@ begin
   case Action of
     i_GetCount: //Получить размерности входов\выходов
       begin
-        if InputMode=3 then begin // для случая задания функции через порты
+        if fInputMode=3 then begin // для случая задания функции через порты
           //cU[2].Dim := cU[1].Dim;
           if GetFullDim(cU[1].Dim)<GetFullDim(cU[2].Dim) then
               cU[2].Dim := cU[1].Dim
@@ -535,7 +518,7 @@ end;
 // оригинальная версия, проверенная временем. После Рефакторинга. Изменения в вызове Лагарнжа.
 function   TInterpolBlock1d.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
 var
-  i,j,c   : Integer;
+  j,c: Integer;
   py: PExtArr; // указатели на значения и аргументы интерполируемых функции,
   px: PExtArr; // изменяются в SetPxPy
   Yvalue: RealType;
@@ -545,58 +528,48 @@ function checkX_range(x: RealType; var AYvalue: RealType):Boolean;
 // возвращает - True - аргумент х находится внутри диапазона и экстраполяция не требуется.
 // иначе - False, и изменяет AYValue на значение экстраполяции
 begin
-  if ExtrapolationType=2 then begin // экстраполировать границы для заданного метода
-    Result := True;
-    exit;
+  if fExtrapolationType=2 then begin // экстраполировать границы для заданного метода
+    exit(True);
     end;
 
   if x<px[0] then begin
-    case ExtrapolationType of
+    case fExtrapolationType of
       0: // константа вне диапазона
           begin AYvalue := py[0]; end; // берем первое значение из таблицы значений
 
       1: // ноль вне диапазона
           begin AYvalue := 0; end;
       end;
-    Result := False;
-    exit;
+    exit(False);
     end;
 
-  if x>px[Xarr_data.Count-1] then begin
-    case ExtrapolationType of
+  if x>px[fXarr_data.Count-1] then begin
+    case fExtrapolationType of
       0: // константа вне диапазона
-          begin AYvalue := py[Xarr_data.Count-1]; end; // берем последнее значение из таблицы значений
+          begin AYvalue := py[fXarr_data.Count-1]; end; // берем последнее значение из таблицы значений
 
       1: // ноль вне диапазона
           begin AYvalue := 0; end;
       end;
-    Result := False;
-    exit;
+    exit(False);
     end;
   // х внутри диапазона определения функции, экстраполяция не требуется
   Result := True;
-end;
-//---------------------------------------------------------------------------
-procedure SetPxPy; // stub
-// устанавливаем указатели px py на начало актуальных данных
-begin
-  // устанавливаем указатели на считанные данные
-  px := Xarr_data.Arr;
-  py := Farr_data.Arr;
 end;
 //------------------------------------------------------------------------
 function  CheckChanges: Boolean;
 // входной вектор был изменен?
 // Это Признак для пересчета внутренних матриц функций интерполяции
 var
-  q: integer;
+  i,q: integer;
 begin
   Result := False;
-  for q:=0 to Xarr_data.Count - 1 do // идем по данным, если видим неравенство - данные новые.
-    if (x_stamp[i].Arr^[q] <> px[q]) or (y_stamp[i].Arr^[q] <> py[q]) then begin
-      x_stamp[i].Arr^[q] := px[q];
-      y_stamp[i].Arr^[q] := py[q];
-      Result:=True;
+  i:=0;
+  for q:=0 to fXarr_data.Count - 1 do // идем по данным, если видим неравенство - данные новые.
+    if (fX_stamp[i].Arr^[q] <> px[q]) or (fY_stamp[i].Arr^[q] <> py[q]) then begin
+      fX_stamp[i].Arr^[q] := px[q];
+      fY_stamp[i].Arr^[q] := py[q];
+      exit(True);
       end;
 end;
 //--------------------------------------------------------------------------
@@ -611,17 +584,16 @@ begin
     f_InitObjects:
       begin
         if not LoadData() then begin
-          Result := r_Fail;
-          exit;
+          exit(r_Fail);
           end;
 
         //Здесь устанавливаем нужные размерности вспомогательных таблиц и переменных
-        SetLength(LastInd,GetFullDim(cU[0].Dim));
-        ZeroMemory(Pointer(LastInd), GetFullDim(cU[0].Dim)*SizeOf(NativeInt));
+        SetLength(fLastInd,GetFullDim(cU[0].Dim));
+        ZeroMemory(Pointer(fLastInd), GetFullDim(cU[0].Dim)*SizeOf(NativeInt));
 
-        SplineArr.ChangeCount(5, Xarr_data.Count);
-        x_stamp.ChangeCount(1, Xarr_data.Count);
-        y_stamp.ChangeCount(1, Xarr_data.Count);
+        fSplineArr.ChangeCount(5, fXarr_data.Count);
+        fX_stamp.ChangeCount(1, fXarr_data.Count);
+        fY_stamp.ChangeCount(1, fYarr_data.Count);
       end;
 
     f_RestoreOuts,
@@ -629,26 +601,25 @@ begin
     f_UpdateOuts,
     f_GoodStep:
       begin
-        if not DataOk then begin
-          Result:=r_Fail;
-          exit;
+        if not fDataOk then begin
+          exit(r_Fail);
           end;
 
         // U[0] - args - всегда значение аргумента X
         c := 0;
-        SetPxPy(); // устанавливаем указатели на начало данных
+        // устанавливаем указатели на считанные данные
+        px := fXarr_data.Arr;
+        py := fYarr_data.Arr;
 
-        i:=0;
-         case InterpolationType of
+         case fInterpolationType of
            3:   // Лагранж
               begin
 
                 for j:=0 to U[0].Count - 1 do begin
                   if checkX_range(U[0].Arr^[j],Yvalue) then begin
-                      //Y[0].arr^[i*U[0].Count+j] := Lagrange(px^,py^,U[0].arr^[j],LagrangeOrder,1);
-                      Y[0].arr^[i*U[0].Count+j] := MyLagrange(px,py,U[0].arr^[j],LagrangeOrder,Xarr_data.Count);
+                      Y[0].arr^[j] := MyLagrange(px,py,U[0].arr^[j],fLagrangeOrder,fXarr_data.Count);
                     end else begin
-                      Y[0].arr^[i*U[0].Count+j] := Yvalue;
+                      Y[0].arr^[j] := Yvalue;
                     end;
 
                   inc(c);
@@ -658,13 +629,13 @@ begin
            2:   //Вычисление натурального кубического сплайна
               begin
                 if CheckChanges or (Action = f_InitState) then begin
-                  NaturalSplineCalc(px, py, SplineArr.Arr, Xarr_data.Count, prop_IsNaturalSpline );
+                  NaturalSplineCalc(px, py, fSplineArr.Arr, fXarr_data.Count, fIsNaturalSpline );
                   end;
 
                 for j:=0 to U[0].Count-1 do begin
 
                   if checkX_range(U[0].Arr^[j],Yvalue) then begin
-                      Y[0].arr^[c] := Interpol(U[0].Arr^[j], SplineArr.Arr, 5, LastInd[j] );
+                      Y[0].arr^[c] := Interpol(U[0].Arr^[j], fSplineArr.Arr, 5, fLastInd[j] );
                     end else begin
                       Y[0].arr^[c] := Yvalue;
                     end;
@@ -676,12 +647,12 @@ begin
            1:   // Линейная интерполяция
               begin
                 if CheckChanges or (Action = f_InitState) then begin
-                  LInterpCalc(px, py, SplineArr.Arr, Xarr_data.Count );
+                  LInterpCalc(px, py, fSplineArr.Arr, fXarr_data.Count );
                   end;
 
                 for j:=0 to U[0].Count-1 do begin
                   if checkX_range(U[0].Arr^[j],Yvalue) then begin
-                      Y[0].arr^[c] := Interpol(U[0].Arr^[j], SplineArr.Arr, 3, LastInd[j]);
+                      Y[0].arr^[c] := Interpol(U[0].Arr^[j], fSplineArr.Arr, 3, fLastInd[j]);
                     end else begin
                       Y[0].arr^[c] := Yvalue;
                     end;
@@ -695,8 +666,8 @@ begin
                   for j:=0 to U[0].Count-1 do begin
                     if checkX_range(U[0].Arr^[j],Yvalue) then begin
                         // находим интервал значений для интерполяции
-                        nXindex := Xarr_data.Count-1;
-                        Find1(U[0].Arr^[j],px,Xarr_data.Count,nXindex);
+                        nXindex := fXarr_data.Count-1;
+                        Find1(U[0].Arr^[j],px,fXarr_data.Count,nXindex);
                         Y[0].arr^[c] := py[nXindex];
                       end else begin
                         Y[0].arr^[c] := Yvalue;
@@ -708,8 +679,7 @@ begin
            else
               begin
                 Assert(False,'TInterpolBlock1d метод задания интерполяции не реализован');
-                Result := r_Fail;
-                exit;
+                exit(r_Fail);
               end;
            end;
       end;
@@ -723,19 +693,19 @@ end;
 constructor TInterpolBlockXY.Create;
 begin
   inherited;
-  table:=TTable2.Create('');
-  InterpolationType:=0;
-  prop_X1_arr:= TExtArray.Create(1);
-  prop_X2_arr:= TExtArray.Create(1);
-  prop_DataTable:= TExtArray2.Create(1,1);
+  fTable:=TTable2.Create('');
+  fInterpolationType:=0;
+  fProp_X1arr:= TExtArray.Create(1);
+  fProp_X2arr:= TExtArray.Create(1);
+  fProp_DataTable:= TExtArray2.Create(1,1);
 end;
 
 destructor TInterpolBlockXY.Destroy;
 begin
-  FreeAndNil(table);
-  FreeAndNil(prop_X1_arr);
-  FreeAndNil(prop_X2_arr);
-  FreeAndNil(prop_DataTable);
+  FreeAndNil(fTable);
+  FreeAndNil(fProp_X1arr);
+  FreeAndNil(fProp_X2arr);
+  FreeAndNil(fProp_DataTable);
   inherited;
 end;
 //---------------------------------------------------------------------------
@@ -745,73 +715,65 @@ begin
   if Result <> -1 then exit;
 
   if StrEqu(ParamName,'Row_arr') then begin
-    Result:=NativeInt(prop_X1_arr);
+    Result:=NativeInt(fProp_X1arr);
     DataType:=dtDoubleArray;
     exit;
     end;
 
   if StrEqu(ParamName,'Col_arr') then begin
-    Result:=NativeInt(prop_X2_arr);
+    Result:=NativeInt(fProp_X2arr);
     DataType:=dtDoubleArray;
     exit;
     end;
 
   if StrEqu(ParamName,'DataMatrix') then begin
-    Result:=NativeInt(prop_DataTable);
+    Result:=NativeInt(fProp_DataTable);
     DataType:=dtMatrix;
     exit;
     end;
 
   if StrEqu(ParamName,'interp_method') then begin
-    Result:=NativeInt(@InterpolationType);
+    Result:=NativeInt(@fInterpolationType);
     DataType:=dtInteger;
     exit;
     end;
 
   if StrEqu(ParamName,'extrType') then begin
-    Result:=NativeInt(@ExtrapolationType);
+    Result:=NativeInt(@fExtrapolationType);
     DataType:=dtInteger;
     exit;
     end;
 
   if StrEqu(ParamName,'inputType') then begin
-    Result:=NativeInt(@inputMode);
+    Result:=NativeInt(@fInputMode);
     DataType:=dtInteger;
     exit;
     end;
 
   if StrEqu(ParamName,'filename') then begin
-    Result:=NativeInt(@fileName);
+    Result:=NativeInt(@fFileName);
     DataType:=dtString;
     exit;
     end;
 
   if StrEqu(ParamName,'fileNameRows') then begin
-    Result:=NativeInt(@fileNameRows);
+    Result:=NativeInt(@fFileNameRows);
     DataType:=dtString;
     exit;
     end;
 
   if StrEqu(ParamName,'fileNameCols') then begin
-    Result:=NativeInt(@fileNameCols);
+    Result:=NativeInt(@fFileNameCols);
     DataType:=dtString;
     exit;
     end;
 
   if StrEqu(ParamName,'fileNameVals') then begin
-    Result:=NativeInt(@fileNameVals);
+    Result:=NativeInt(@fFileNameVals);
     DataType:=dtString;
     exit;
     end;
 
-// число дополнительных портов
-  if StrEqu(ParamName,'nport') then begin
-    Result:=NativeInt(@nport);
-    DataType:=dtInteger;
-    exit;
-    end;
-
-  ErrorEvent(txtParamUnknown1+ParamName+txtParamUnknown2, msWarning, VisualObject);
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.checkXY_Range(var aX1,aX2: RealType;var aZvalue: RealType): Boolean;
@@ -823,30 +785,27 @@ var
   x1_inRange,x2_inRange: Boolean;
 begin
 
-  if ExtrapolationType=2 then begin // экстраполировать границы для заданного метода
-    Result := True;
-    exit;
+  if fExtrapolationType=2 then begin // экстраполировать границы для заданного метода
+    exit(True);
     end;
 
-  x1_inRange := ((aX1>=table.px1[0])and(aX1<=table.px1[table.Arg1Count-1]));
-  x2_inRange := ((aX2>=table.px2[0])and(aX2<=table.px2[table.Arg2Count-1]));
+  x1_inRange := ((aX1>=fTable.px1[0])and(aX1<=fTable.px1[fTable.Arg1Count-1]));
+  x2_inRange := ((aX2>=fTable.px2[0])and(aX2<=fTable.px2[fTable.Arg2Count-1]));
 
   if (x1_inRange and x2_inRange) then begin //в диапазоне, экстраполяция не требуется
-    Result := True;
-    exit;
+    exit(True);
     end;
 
   // за пределами диапазона, тип экстраполяции - ноль за пределами диапазона
-  if ExtrapolationType=1 then begin
-    Result := False;
+  if fExtrapolationType=1 then begin
     aZvalue := 0;
-    exit;
+    exit(False);
     end;
 
   // кусочно-постоянная интерполяция
   Result:=False;
   // подставляем результат интервальной интерполяции
-  aZvalue := table.GetFunValueWithoutInterpolation(aX1,aX2);
+  aZvalue := fTable.GetFunValueWithoutInterpolation(aX1,aX2);
   // либо использовать
   // table.GetFunValueWithoutExtrapolation
 end;
@@ -856,29 +815,28 @@ var
   i,j,M,N: Integer;
   f: RealType;
 begin
-  DataLength:=0;
+  fDataLength:=0;
 
   N := U[ROW_ARGS_ARR].Count;
   M := U[COL_ARGS_ARR].Count;
 
-  table.Arg1Count := N;
-  table.Arg2Count := M;
+  fTable.Arg1Count := N;
+  fTable.Arg2Count := M;
 
-  TExtArray_cpy(table.px1, U[ROW_ARGS_ARR]);
-  TExtArray_cpy(table.px2, U[COL_ARGS_ARR]);
+  TExtArray_cpy(fTable.px1, U[ROW_ARGS_ARR]);
+  TExtArray_cpy(fTable.px2, U[COL_ARGS_ARR]);
 
-  table.py.ChangeCount(N,M);
+  fTable.py.ChangeCount(N,M);
 
   if (M*N<>U[FUNCS_TABLE].Count) then begin
-    Result:=False;
-    exit;
+    exit(False);
     end;
 
   for i:=0 to N-1 do begin
     for j:=0 to M-1 do begin
-      f := U[FUNCS_TABLE].Arr[DataLength];
-      Inc(DataLength);
-      table.py[i][j]:=f;
+      f := U[FUNCS_TABLE].Arr[fDataLength];
+      Inc(fDataLength);
+      fTable.py[i][j]:=f;
       end;
     end;
 
@@ -887,44 +845,43 @@ end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.LoadDataFromProperties(): Boolean;
 begin
-  table.Arg1Count := prop_X1_arr.Count;
-  table.Arg2Count := prop_X2_arr.Count;
+  fTable.Arg1Count := fProp_X1arr.Count;
+  fTable.Arg2Count := fProp_X2arr.Count;
 
-  TExtArray_cpy(table.px1, prop_X1_arr);
-  TExtArray_cpy(table.px2, prop_X2_arr);
-  TExtArray2_cpy(table.py, prop_DataTable);
+  TExtArray_cpy(fTable.px1, fProp_X1arr);
+  TExtArray_cpy(fTable.px2, fProp_X2arr);
+  TExtArray2_cpy(fTable.py, fProp_DataTable);
 
-  DataLength := table.py.CountX*table.py.GetMaxCountY;
+  fDataLength := fTable.py.CountX*fTable.py.GetMaxCountY;
   Result := True;
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.LoadDataFrom3Files(): Boolean;
 begin
-  Result:=False;
-  DataLength:=0;
+  fDataLength:=0;
 
   //rows
-  if not Load_TExtArray_FromFile(FileNameRows,table.px1) then begin
-    ErrorEvent(txtFileError1+FileNameRows+txtFileError2,msError,VisualObject);
-    exit;
+  if not Load_TExtArray_FromFile(fFileNameRows,fTable.px1) then begin
+    ErrorEvent(txtFileError1+fFileNameRows+txtFileError2,msError,VisualObject);
+    exit(False);
     end;
-  table.Arg1Count:=table.px1.Count;
+  fTable.Arg1Count:=fTable.px1.Count;
 
   // cols
-  if not Load_TExtArray_FromFile(FileNameCols,table.px2) then begin
-    ErrorEvent(txtFileError1+FileNameCols+txtFileError2,msError,VisualObject);
-    exit;
+  if not Load_TExtArray_FromFile(fFileNameCols,fTable.px2) then begin
+    ErrorEvent(txtFileError1+fFileNameCols+txtFileError2,msError,VisualObject);
+    exit(False);
     end;
-  table.Arg2Count:=table.px2.Count;
+  fTable.Arg2Count:=fTable.px2.Count;
 
   // vars
-  if not Load_TExtArray2_FromCsvFile(FileNameVals,table.py) then begin
-    ErrorEvent(txtFileError1+FileNameVals+txtFileError2,msError,VisualObject);
-    exit;
+  if not Load_TExtArray2_FromCsvFile(fFileNameVals,fTable.py) then begin
+    ErrorEvent(txtFileError1+fFileNameVals+txtFileError2,msError,VisualObject);
+    exit(False);
     end;
 
   // TODO!! добавить варианты чтения бинарника
-  DataLength:=table.py.CountX*table.py.GetMaxCountY;
+  fDataLength:=fTable.py.CountX*fTable.py.GetMaxCountY;
   Result := True;
 end;
 //----------------------------------------------------------------------------
@@ -933,55 +890,53 @@ function TInterpolBlockXY.LoadDataFromJson():Boolean;
 var
   str1: string;
   jso: TJSONObject;
-  jsv: TJSONValue;
   jarr: TJSONArray;
   i,j,x1count,x2count,jarrCount: Integer;
-  arrValue: TJSONValue;
 begin
   Result := True;
-  DataLength:=0;
+  fDataLength:=0;
   jso := nil;
 
   try
-    str1 := TFILE.ReadAllText(ExpandFileName(FileName));
+    str1 := TFILE.ReadAllText(ExpandFileName(fFileName));
     jso := TJSONObject.ParseJSONValue(str1) as TJSONObject;
 
     // подгружаем ось Х1
     jarr := jso.GetValue<TJSONArray>('axis1');
     x1Count:=jarr.Count;
-    table.Arg1Count := x1Count;
+    fTable.Arg1Count := x1Count;
 
     for j := 0 to x1Count - 1 do begin
-      table.px1[j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
+      fTable.px1[j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
       end;
 
     // подгружаем ось Х2
     jarr := jso.GetValue<TJSONArray>('axis2');
     x2Count:=jarr.Count;
-    table.Arg2Count := x2Count;
+    fTable.Arg2Count := x2Count;
 
     for j := 0 to x2Count - 1 do begin
-      table.px2[j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
+      fTable.px2[j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
       end;
 
     // подгружаем тело функции
     jarr := jso.GetValue<TJSONArray>('dataVolume');
     jarrCount := jarr.Count;
 
-    x1Count := table.px1.Count;
-    x2Count := table.px2.Count;
+    x1Count := fTable.px1.Count;
+    x2Count := fTable.px2.Count;
 
     if (jarrCount<x1Count*x2Count) then begin // недостаточно данных в файле
         Result:=False;
         end;
 
-    table.py.ChangeCount(x1Count,x2Count);
-    DataLength:=0;
+    fTable.py.ChangeCount(x1Count,x2Count);
+    fDataLength:=0;
 
     for i:=0 to x1count-1 do
     for j := 0 to x2count-1 do begin
-      table.py[i][j]:=jarr.Items[DataLength].AsType<TJSONNumber>.AsDouble;
-      inc(DataLength);
+      fTable.py[i][j]:=jarr.Items[fDataLength].AsType<TJSONNumber>.AsDouble;
+      inc(fDataLength);
       end;
   except
     Result := False;
@@ -999,9 +954,9 @@ var
   str1:string;
 begin
 	Result:=True;
-  DataLength:=0;
+  fDataLength:=0;
   slist1:=TStringList.Create;
-  slist1.LoadFromFile(ExpandFileName(FileName));
+  slist1.LoadFromFile(ExpandFileName(fFileName));
   str1:=slist1.Text;
   FreeAndNil(slist1);
 
@@ -1010,31 +965,31 @@ begin
     // подгружаем ось Х1
     jarr := jso.Arrays['axis1'];
     x1Count:=jarr.Count;
-    table.Arg1Count := x1Count;
+    fTable.Arg1Count := x1Count;
 
     for j := 0 to x1Count - 1 do begin
-      table.px1[j]:=jarr.Floats[j];
+      fTable.px1[j]:=jarr.Floats[j];
       end;
 
     // подгружаем ось Х2
     jarr := jso.Arrays['axis2'];
     x2Count:=jarr.Count;
-    table.Arg2Count := x2Count;
+    fTable.Arg2Count := x2Count;
 
     for j := 0 to x2Count - 1 do begin
-      table.px2[j]:=jarr.Floats[j];
+      fTable.px2[j]:=jarr.Floats[j];
       end;
 
     // читаем dataVolume
-    table.py.ChangeCount(x1Count,x2Count);
-    DataLength:=0;
+    fTable.py.ChangeCount(x1Count,x2Count);
+    fDataLength:=0;
 
     jarr:=jso.Arrays['dataVolume'];
 
     for i:=0 to x1count-1 do
     for j := 0 to x2count-1 do begin
-      table.py[i][j]:=jarr.Floats[DataLength];
-      inc(DataLength);
+      fTable.py[i][j]:=jarr.Floats[fDataLength];
+      inc(fDataLength);
       end;
   except
     Result:=False;
@@ -1047,22 +1002,21 @@ end;
 function TInterpolBlockXY.LoadDataFromTbl(): Boolean;
 begin
   //Загрузка данных из файла с таблицей
-  DataLength := 0;
+  fDataLength := 0;
   Result:=True;
-  table.OpenFromFile(fileName);
-  if (table.px1.Count = 0) or (table.px2.Count = 0) then begin
+  fTable.OpenFromFile(fFileName);
+  if (fTable.px1.Count = 0) or (fTable.px2.Count = 0) then begin
     //ErrorEvent(txtErrorReadTable,msError,VisualObject);
-    Result:=False;
-    exit;
+    exit(False);
     end;
 
-  DataLength:=table.py.CountX*table.py.GetMaxCountY;
+  fDataLength:=fTable.py.CountX*fTable.py.GetMaxCountY;
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.LoadData(): Boolean;
 begin
-  DataOk:=False;
-  case inputMode of
+  fDataOk:=False;
+  case fInputMode of
     0:// ввести вручную через свойства
       Result:=LoadDataFromProperties();
     1:// в разных файлах
@@ -1073,28 +1027,27 @@ begin
 
         if not Result then Result:=LoadDataFromTbl();
         if not Result then begin
-          ErrorEvent(txtFileError1+FileName+txtFileError2,msError,VisualObject);
-          exit;
+          ErrorEvent(txtFileError1+fFileName+txtFileError2,msError,VisualObject);
+          exit(False);
           end;
       end;
     3:// через порты
       Result:=LoadDataFromPorts();
     else
       Assert(False,'TInterpolBlockXY метод задания функции не реализован');
-      Result:=False;
-      exit;
+      exit(False);
     end;
 
   if Result then Result:=CheckData();
-  if Result then DataOk:=True;
+  if Result then fDataOk:=True;
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.CheckData(): Boolean;
 begin
-  Result := (table.px1.Count*table.px2.Count=DataLength);
+  Result := (fTable.px1.Count*fTable.px2.Count=fDataLength);
   if not Result then begin
     ErrorEvent(txtDimError,msError,VisualObject);
-    exit;
+    exit(False);
     end;
 end;
 //----------------------------------------------------------------------------
@@ -1112,7 +1065,7 @@ begin
                  cU[0].Dim:=cU[1].Dim
               else
                  cU[1].Dim:=cU[0].Dim;
-             cY[0]:=cU[0];
+             cY[0].Dim:=cU[0].Dim;
             end;
 
           // при задании через порты проверяем их размерность
@@ -1123,8 +1076,7 @@ begin
 
             if(M*N<>T) then begin
               ErrorEvent(txtDimError, msError, VisualObject);
-              Result:=r_Fail;
-              exit;
+              exit(r_Fail);
               end;
 
             end;
@@ -1147,8 +1099,7 @@ begin
       begin
        //Загрузка данных из файла с таблицей или портов
        if not LoadData() then begin
-         Result:=r_Fail;
-         exit;
+         exit(r_Fail);
         end;
       end;
 
@@ -1157,18 +1108,17 @@ begin
     f_RestoreOuts,
     f_GoodStep:
       begin
-        if not DataOk then begin
-          Result:=r_Fail;
-          exit;
+        if not fDataOk then begin
+          exit(r_Fail);
           end;
 
-        case InterpolationType of
+        case fInterpolationType of
 
             0:  // линейная
               begin
               for i:=0 to U[0].Count - 1 do
                 if checkXY_Range(U[0].Arr^[i],U[1].Arr^[i],Yval) then begin
-                  Y[0].Arr^[i]:=table.GetFunValue(U[0].Arr^[i],U[1].Arr^[i]); end
+                  Y[0].Arr^[i]:=fTable.GetFunValue(U[0].Arr^[i],U[1].Arr^[i]); end
                   else begin
                   Y[0].Arr^[i]:=Yval; end;
               end;
@@ -1177,7 +1127,7 @@ begin
                begin
                  for i:=0 to U[0].Count - 1 do
                   if checkXY_Range(U[0].Arr^[i],U[1].Arr^[i],Yval) then begin
-                    Y[0].Arr^[i]:=table.GetFunValueWithoutInterpolation(U[0].Arr^[i],U[1].Arr^[i]); end
+                    Y[0].Arr^[i]:=fTable.GetFunValueWithoutInterpolation(U[0].Arr^[i],U[1].Arr^[i]); end
                     else begin
                     Y[0].Arr^[i]:=Yval;
                     end;
@@ -1187,7 +1137,7 @@ begin
               begin
                   for i:=0 to U[0].Count - 1 do
                     if checkXY_Range(U[0].Arr^[i],U[1].Arr^[i],Yval) then begin
-                    Y[0].Arr^[i]:=table.GetFunValueBySplineInterpolation(U[0].Arr^[i],U[1].Arr^[i]); end
+                    Y[0].Arr^[i]:=fTable.GetFunValueBySplineInterpolation(U[0].Arr^[i],U[1].Arr^[i]); end
                     else begin
                     Y[0].Arr^[i]:=Yval;
                     end;
@@ -1197,7 +1147,7 @@ begin
               begin
                   for i:=0 to U[0].Count - 1 do
                     if checkXY_Range(U[0].Arr^[i],U[1].Arr^[i],Yval) then begin
-                      Y[0].Arr^[i]:=table.GetFunValueByAkimaInterpolation(U[0].Arr^[i],U[1].Arr^[i]); end
+                      Y[0].Arr^[i]:=fTable.GetFunValueByAkimaInterpolation(U[0].Arr^[i],U[1].Arr^[i]); end
                       else begin
                       Y[0].Arr^[i]:=Yval;
                       end;
@@ -1216,37 +1166,37 @@ constructor  TInterpolBlockMultiDim.Create;
 begin
   inherited;
   IsLinearBlock:=True;
-  InterpolationType:=0;
-  ExtrapolationType:=0;
+  fInterpolationType:=0;
+  fExtrapolationType:=0;
 
-  tmpXp:=TExtArray2.Create(1,1);
+  ftempXp:=TExtArray2.Create(1,1);
   // аргументы и значения функции для вычислений.
   // Могут быть получены - 1. из свойств объекта 2. загружены из файла
-  Xtable:=TExtArray2.Create(1,1);
-  Ftable:=TExtArray.Create(1);
+  fXtable:=TExtArray2.Create(1,1);
+  fFtable:=TExtArray.Create(1);
 
   // свойства объекта - аргументы и значения функции
-  prop_X:=TExtArray2.Create(1,1);
-  prop_F:=TExtArray.Create(1);
+  fProp_X:=TExtArray2.Create(1,1);
+  fProp_F:=TExtArray.Create(1);
 
   // внутренние переменные для функции интерполяции
-  u_:=TExtArray.Create(1);
-  v_:=TExtArray.Create(1);
-  ad_:=TIntArray.Create(1);
-  k_:=TIntArray.Create(1);
+  fU_:=TExtArray.Create(1);
+  fV_:=TExtArray.Create(1);
+  fAd_:=TIntArray.Create(1);
+  fK_:=TIntArray.Create(1);
 end;
 
 destructor   TInterpolBlockMultiDim.Destroy;
 begin
-  FreeAndNil(tmpXp);
-  FreeAndNil(Xtable);
-  FreeAndNil(Ftable);
-  FreeAndNil(prop_X);
-  FreeAndNil(prop_F);
-  FreeAndNil(u_);
-  FreeAndNil(v_);
-  FreeAndNil(ad_);
-  FreeAndNil(k_);
+  FreeAndNil(ftempXp);
+  FreeAndNil(fXtable);
+  FreeAndNil(fFtable);
+  FreeAndNil(fProp_X);
+  FreeAndNil(fProp_F);
+  FreeAndNil(fU_);
+  FreeAndNil(fV_);
+  FreeAndNil(fAd_);
+  FreeAndNil(fK_);
   inherited;
 end;
 
@@ -1260,26 +1210,23 @@ begin
     i_GetPropErr: // проверка размерностей
       begin
         if not LoadData() then begin
-              Result:=r_Fail;
-              exit;
+              exit(r_Fail);
               end;
 
-        if Xtable.CountX <= 0 then begin
+        if fXtable.CountX <= 0 then begin
           ErrorEvent(txtDimensionsNotDefined,msError,VisualObject);
-          Result:=r_Fail;
-          exit;
+          exit(r_Fail);
           end;
 
         //Вычисляем суммарную размерность
-        p:=Xtable[0].Count;
-        for i := 1 to Xtable.CountX - 1 do p:=p*Xtable[i].Count;
+        p:=fXtable[0].Count;
+        for i := 1 to fXtable.CountX - 1 do p:=p*fXtable[i].Count;
 
         //Проверяем всё ли задано в массиве val_
-        if Ftable.Count > 0 then begin
-          if Ftable.Count < p then begin
+        if fFtable.Count > 0 then begin
+          if fFtable.Count < p then begin
              ErrorEvent(txtOrdinatesDefineIncomplete+IntToStr(p),msWarning,VisualObject);
-             Result := r_Fail;
-             exit;
+             exit(r_Fail);
              end;
           end;
       end;
@@ -1287,14 +1234,13 @@ begin
     i_GetCount:
       begin
         if not LoadData() then begin
-          Result:=r_Fail;
-          exit;
+          exit(r_Fail);
           end;
 
           //Размерность выхода = размерность входа делённая на размерность матрицы абсцисс
-          cY[0].Dim:= SetDim([ GetFullDim(cU[0].Dim) div Xtable.CountX ]);
+          cY[0].Dim:= SetDim([ GetFullDim(cU[0].Dim) div fXtable.CountX ]);
           //Условие кратности рзмерности
-          nn := cY[0].Dim[0]*Xtable.CountX;
+          nn := cY[0].Dim[0]*fXtable.CountX;
           if GetFullDim(cU[0].Dim) <> nn then cU[0].Dim:=SetDim([nn]);
       end
     else
@@ -1311,25 +1257,23 @@ begin
     f_InitObjects:
       begin
         if not LoadData() then begin
-          Result:=r_Fail;
-          exit;
+          exit(r_Fail);
           end;
 
           //Подчитываем к-во точек по размерности входа
-        tmpXp.ChangeCount(GetFullDim(cU[0].Dim) div Xtable.CountX,Xtable.CountX);
+        ftempXp.ChangeCount(GetFullDim(cU[0].Dim) div fXtable.CountX,fXtable.CountX);
 
         //Инициализируем временные массивы
-        u_.Count  := Xtable.CountX;
-        v_.Count  := 1 shl (Xtable.CountX);
-        ad_.Count := 1 shl (Xtable.CountX);
-        k_.Count  := Xtable.CountX;
+        fU_.Count  := fXtable.CountX;
+        fV_.Count  := 1 shl (fXtable.CountX);
+        fAd_.Count := 1 shl (fXtable.CountX);
+        fK_.Count  := fXtable.CountX;
       end;
 
     f_InitState:
       begin
       if not CheckData() then begin
-          Result:=r_Fail;
-          exit;
+          exit(r_Fail);
           end;
       end;
 
@@ -1339,23 +1283,22 @@ begin
     f_GoodStep:
       begin
 
-        if not DataOk then begin
-          Result:=r_Fail;
-          exit;
+        if not fDataOk then begin
+          exit(r_Fail);
           end;
 
         j:=0;
         // копируем аргумент из входного вектора U во временное хранилище
-        for i := 0 to tmpXp.CountX - 1 do begin
-          Move(U[0].Arr^[j],tmpXp[i].Arr^[0],tmpXp[i].Count*SizeOfDouble);
-          inc(j,tmpXp[i].Count);
+        for i := 0 to ftempXp.CountX - 1 do begin
+          Move(U[0].Arr^[j],ftempXp[i].Arr^[0],ftempXp[i].Count*SizeOfDouble);
+          inc(j,ftempXp[i].Count);
           end;
 
 
-        case InterpolationType of
-          1: nstep_interp(Xtable,Ftable,tmpXp,Y[0],ExtrapolationType,k_);
+        case fInterpolationType of
+          1: nstep_interp(fXtable,fFtable,ftempXp,Y[0],fExtrapolationType,fK_);
         else
-          nlinear_interp(Xtable,Ftable,tmpXp,Y[0],ExtrapolationType,u_,v_,ad_,k_);
+          nlinear_interp(fXtable,fFtable,ftempXp,Y[0],fExtrapolationType,fU_,fV_,fAd_,fK_);
         end;
 
         end;
@@ -1364,29 +1307,28 @@ end;
 //--------------------------------------------------------------------------
 function TInterpolBlockMultiDim.LoadData(): Boolean;
 begin
-  DataOk:=False;
+  fDataOk:=False;
 
-  case inputMode of
+  case fInputMode of
   0:
     Result := LoadDataFromProperties();
   1:
    begin
     Result := LoadDataFromJSON();
     if not Result then begin
-      ErrorEvent(txtFileError1+FileName+txtFileError2, msError, VisualObject);
-      exit;
+      ErrorEvent(txtFileError1+fFileName+txtFileError2, msError, VisualObject);
+      exit(False);
       end;
     end
    else
     begin
       Assert(False,'TInterpolBlockMultiDim метод задания многомерной функции не реализован');
-      Result:=False;
-      exit;
+      exit(False);
     end;
   end;
 
   if Result then Result:=CheckData();
-  if Result then DataOk:=True; // данные корректно загружены
+  if Result then fDataOk:=True; // данные корректно загружены
 end;
 //---------------------------------------------------------------------------
 function TInterpolBlockMultiDim.CheckData(): Boolean;
@@ -1397,14 +1339,13 @@ begin
   Result:=True;
 
   Volume := 1;
-  for i:=0 to Xtable.CountX-1 do begin
-    Volume := Volume*Xtable[i].Count;
+  for i:=0 to fXtable.CountX-1 do begin
+    Volume := Volume*fXtable[i].Count;
     end;
 
-  if (DataLength<>Volume) then begin
+  if (fDataLength<>Volume) then begin
     ErrorEvent(txtDimError, msError, VisualObject);
-    Result:=False;
-    exit;
+    exit(False);
     end;
 
 end;
@@ -1417,15 +1358,14 @@ var
   jsv: TJSONValue;
   jarr: TJSONArray;
   i,j,axisCount,jarrCount: Integer;
-  arrValue: TJSONValue;
 
 begin
   Result := True;
   jso := nil;
-  DataLength:=0;
+  fDataLength:=0;
 
   try
-    str1 := TFILE.ReadAllText(ExpandFileName(FileName));
+    str1 := TFILE.ReadAllText(ExpandFileName(fFileName));
     jso := TJSONObject.ParseJSONValue(str1) as TJSONObject;
 
     // подгружаем оси
@@ -1442,15 +1382,15 @@ begin
       inc(axisCount);
       end;
 
-    Xtable.ChangeCountX(axisCount);
+    fXtable.ChangeCountX(axisCount);
     for i:=0 to axisCount-1 do begin
       str2 := 'axis'+IntToStr(i+1);
       jarr := jso.GetValue<TJSONArray>(str2);
       jarrCount:=jarr.Count;
-      Xtable[i].ChangeCount(jarrCount);
+      fXtable[i].ChangeCount(jarrCount);
 
       for j := 0 to jarrCount - 1 do begin
-        Xtable[i][j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
+        fXtable[i][j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
         end;
 
       end;
@@ -1459,11 +1399,11 @@ begin
     jsv := jso.GetValue('dataVolume');
     jarr := jsv as TJSONArray;
     jarrCount := jarr.Count;
-    Ftable.ChangeCount(jarrCount);
+    fFtable.ChangeCount(jarrCount);
 
     for j := 0 to jarrCount - 1 do begin
-      Ftable[j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
-      inc(DataLength);
+      fFtable[j]:=jarr.Items[j].AsType<TJSONNumber>.AsDouble;
+      inc(fDataLength);
       end;
 
   except
@@ -1484,7 +1424,7 @@ begin
 	Result:=True;
   DataLength:=0;
   slist1:=TStringList.Create;
-  slist1.LoadFromFile(ExpandFileName(FileName));
+  slist1.LoadFromFile(ExpandFileName(fFileName));
   str1:=slist1.Text;
   FreeAndNil(slist1);
 
@@ -1502,17 +1442,17 @@ begin
       if not Assigned(jarr) then break;
       inc(axisCount);
       end;
-    Xtable.ChangeCountX(axisCount);
+    fXtable.ChangeCountX(axisCount);
 
     // читаем оси
     for i:=0 to axisCount-1 do begin
       str2:='axis'+IntToStr(i+1);
       jarr := jso.Arrays[str2];
       jarrCount:=jarr.Count;
-      Xtable[i].ChangeCount(jarrCount);
+      fXtable[i].ChangeCount(jarrCount);
 
       for j := 0 to jarrCount - 1 do begin
-        Xtable[i][j]:=jarr.Floats[j];
+        fXtable[i][j]:=jarr.Floats[j];
     	  end;
       end;
 
@@ -1521,10 +1461,10 @@ begin
     jarr:=jso.Arrays[str2];
 
     jarrCount := jarr.Count;
-    Ftable.ChangeCount(jarrCount);
+    fFtable.ChangeCount(jarrCount);
 
     for j := 0 to jarrCount - 1 do begin
-      Ftable[j]:=jarr.Floats[j];
+      fFtable[j]:=jarr.Floats[j];
       inc(DataLength);
       end;
   except
@@ -1538,9 +1478,9 @@ end;
 //---------------------------------------------------------------------------
 function TInterpolBlockMultiDim.LoadDataFromProperties(): Boolean;
 begin
-  TExtArray2_cpy(Xtable,prop_X);
-  TExtArray_cpy(Ftable, prop_F);
-  DataLength := prop_F.Count;
+  TExtArray2_cpy(fXtable,fProp_X);
+  TExtArray_cpy(fFtable, fProp_F);
+  fDataLength := fProp_F.Count;
   Result := True;
 end;
 //---------------------------------------------------------------------------
@@ -1550,42 +1490,41 @@ begin
   if Result<>-1 then exit;
 
   if StrEqu(ParamName,'outmode') then begin
-    Result:=NativeInt(@ExtrapolationType);
+    Result:=NativeInt(@fExtrapolationType);
     DataType:=dtInteger;
     exit;
     end;
 
   if StrEqu(ParamName,'method') then begin
-    Result:=NativeInt(@InterpolationType);
+    Result:=NativeInt(@fInterpolationType);
     DataType:=dtInteger;
     exit;
     end;
 
   if StrEqu(ParamName,'x') then begin
-    Result:=NativeInt(prop_X);
+    Result:=NativeInt(fProp_X);
     DataType:=dtMatrix;
     exit;
     end;
 
   if StrEqu(ParamName,'values') then begin
-    Result:=NativeInt(prop_F);
+    Result:=NativeInt(fProp_F);
     DataType:=dtDoubleArray;
     exit;
     end;
 
   if StrEqu(ParamName,'inputMode') then begin
-    Result:=NativeInt(@inputMode);
+    Result:=NativeInt(@fInputMode);
     DataType:=dtInteger;
     exit;
     end;
 
   if StrEqu(ParamName,'FileName') then begin
-    Result:=NativeInt(@FileName);
+    Result:=NativeInt(@fFileName);
     DataType:=dtString;
     exit;
     end;
 
-  ErrorEvent(txtParamUnknown1+ParamName+txtParamUnknown2, msWarning, VisualObject);
 end;
 
 end.
