@@ -95,7 +95,7 @@ type
     function LoadData(): Boolean;
     // общая проверка размерностей введенных данных
     function CheckData(): Boolean;
-    function checkXY_Range(var aX1,aX2: RealType;var aZvalue: RealType): Boolean;
+    function checkXY_inRange(var aX1,aX2: RealType;var aZvalue: RealType): Boolean;
 
   public
     function InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;override;
@@ -476,8 +476,7 @@ begin
           end;
 
         // размерность выходного вектора всегда определена
-        cY[0].Dim:=SetDim([GetFullDim(cU[0].Dim)]);
-        //cY[0].Dim:=cU[0].Dim;
+        cY[0].Dim:=cU[0].Dim;
       end;
     else
       Result:=inherited InfoFunc(Action,aParameter);
@@ -487,7 +486,7 @@ end;
 //============================================================================
 //точка начала построения полинома Л утанавливается принудительно рядом с инервалом интерполяции
 //============================================================================
-function MyLagrange(var px,py :PExtArr;X:RealType;LagrOrder,NPoints:Integer):RealType;
+function WLagrange(var aPx,aPy :PExtArr;aX:RealType;aLagrOrder,aNumPoints:Integer):RealType;
 //    px - МАССИВ ЗНАЧЕНИЙ АРГУМЕНТА
 //    py - МАССИВ ЗНАЧЕНИЙ ФУНКЦИИ
 //    X - АРГУМЕНТ
@@ -497,33 +496,32 @@ var
   Mshift: Integer;
   nXindex: NativeInt;
 begin
-  nXindex := NPoints-1;
+  nXindex := aNumPoints-1;
   // смещение для вычисления полинома Л считаем по интервалу нахождения аргумента Х
-  Find1(X,px, NPoints,nXindex);
+  Find1(aX,aPx, aNumPoints,nXindex);
   Mshift := nXindex;
 
   // полином по точкам функции, не выходя за ее пределы
   // подробности см. реализации Lagrange
-  if(Mshift+LagrOrder)>=(Npoints-1) then begin
-    Mshift:= Npoints-1- LagrOrder;
+  if(Mshift+aLagrOrder)>=(aNumPoints-1) then begin
+    Mshift:= aNumPoints-1- aLagrOrder;
     end;
 
   if (Mshift<1) then Mshift:=1;
 
   // вызываем старую функцию с уже правильным M
-  Result := Lagrange(px^,py^,X,LagrOrder,Mshift);
+  Result := Lagrange(aPx^,aPy^,aX,aLagrOrder,Mshift);
 end;
 //=============================================================================
 
 // оригинальная версия, проверенная временем. После Рефакторинга. Изменения в вызове Лагарнжа.
 function   TInterpolBlock1d.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
 var
-  j,c: Integer;
-  py: PExtArr; // указатели на значения и аргументы интерполируемых функции,
-  px: PExtArr; // изменяются в SetPxPy
+  uInd: Integer;
+  px,py: PExtArr; // указатели на значения и аргументы интерполируемых функции,
   Yvalue: RealType;
 
-function checkX_range(x: RealType; var AYvalue: RealType):Boolean;
+function checkX_inRange(aX: RealType; var AYvalue: RealType):Boolean;
 // проверить, что аргумент х находится внутри диапазона определения функции.
 // возвращает - True - аргумент х находится внутри диапазона и экстраполяция не требуется.
 // иначе - False, и изменяет AYValue на значение экстраполяции
@@ -532,24 +530,24 @@ begin
     exit(True);
     end;
 
-  if x<px[0] then begin
+  if aX<px[0] then begin
     case fExtrapolationType of
       0: // константа вне диапазона
-          begin AYvalue := py[0]; end; // берем первое значение из таблицы значений
+          AYvalue := py[0]; // берем первое значение из таблицы значений
 
       1: // ноль вне диапазона
-          begin AYvalue := 0; end;
+          AYvalue := 0;
       end;
     exit(False);
     end;
 
-  if x>px[fXarr_data.Count-1] then begin
+  if aX>px[fXarr_data.Count-1] then begin
     case fExtrapolationType of
       0: // константа вне диапазона
-          begin AYvalue := py[fXarr_data.Count-1]; end; // берем последнее значение из таблицы значений
+          AYvalue := py[fXarr_data.Count-1]; // берем последнее значение из таблицы значений
 
       1: // ноль вне диапазона
-          begin AYvalue := 0; end;
+          AYvalue := 0;
       end;
     exit(False);
     end;
@@ -561,14 +559,14 @@ function  CheckChanges: Boolean;
 // входной вектор был изменен?
 // Это Признак для пересчета внутренних матриц функций интерполяции
 var
-  i,q: integer;
+  q: integer;
 begin
   Result := False;
-  i:=0;
+  // TODO!! переделать на 1 мерный массивы
   for q:=0 to fXarr_data.Count - 1 do // идем по данным, если видим неравенство - данные новые.
-    if (fX_stamp[i].Arr^[q] <> px[q]) or (fY_stamp[i].Arr^[q] <> py[q]) then begin
-      fX_stamp[i].Arr^[q] := px[q];
-      fY_stamp[i].Arr^[q] := py[q];
+    if (fX_stamp[0].Arr^[q] <> px[q]) or (fY_stamp[0].Arr^[q] <> py[q]) then begin
+      fX_stamp[0].Arr^[q] := px[q];
+      fY_stamp[0].Arr^[q] := py[q];
       exit(True);
       end;
 end;
@@ -590,7 +588,7 @@ begin
         //Здесь устанавливаем нужные размерности вспомогательных таблиц и переменных
         SetLength(fLastInd,GetFullDim(cU[0].Dim));
         ZeroMemory(Pointer(fLastInd), GetFullDim(cU[0].Dim)*SizeOf(NativeInt));
-
+        // TODO!! - выяснить минимально необходимую размерность аргументов.
         fSplineArr.ChangeCount(5, fXarr_data.Count);
         fX_stamp.ChangeCount(1, fXarr_data.Count);
         fY_stamp.ChangeCount(1, fYarr_data.Count);
@@ -606,84 +604,53 @@ begin
           end;
 
         // U[0] - args - всегда значение аргумента X
-        c := 0;
         // устанавливаем указатели на считанные данные
         px := fXarr_data.Arr;
         py := fYarr_data.Arr;
 
-         case fInterpolationType of
-           3:   // Лагранж
-              begin
-
-                for j:=0 to U[0].Count - 1 do begin
-                  if checkX_range(U[0].Arr^[j],Yvalue) then begin
-                      Y[0].arr^[j] := MyLagrange(px,py,U[0].arr^[j],fLagrangeOrder,fXarr_data.Count);
-                    end else begin
-                      Y[0].arr^[j] := Yvalue;
-                    end;
-
-                  inc(c);
-                  end;
-              end;
-
-           2:   //Вычисление натурального кубического сплайна
-              begin
-                if CheckChanges or (Action = f_InitState) then begin
-                  NaturalSplineCalc(px, py, fSplineArr.Arr, fXarr_data.Count, fIsNaturalSpline );
-                  end;
-
-                for j:=0 to U[0].Count-1 do begin
-
-                  if checkX_range(U[0].Arr^[j],Yvalue) then begin
-                      Y[0].arr^[c] := Interpol(U[0].Arr^[j], fSplineArr.Arr, 5, fLastInd[j] );
-                    end else begin
-                      Y[0].arr^[c] := Yvalue;
-                    end;
-
-                  inc(c);
-                  end;
-              end;
-
-           1:   // Линейная интерполяция
-              begin
-                if CheckChanges or (Action = f_InitState) then begin
-                  LInterpCalc(px, py, fSplineArr.Arr, fXarr_data.Count );
-                  end;
-
-                for j:=0 to U[0].Count-1 do begin
-                  if checkX_range(U[0].Arr^[j],Yvalue) then begin
-                      Y[0].arr^[c] := Interpol(U[0].Arr^[j], fSplineArr.Arr, 3, fLastInd[j]);
-                    end else begin
-                      Y[0].arr^[c] := Yvalue;
-                    end;
-
-                  inc(c);
-                  end;
-              end;
-
-           0:     // кусочная интерполяция.
-              begin
-                  for j:=0 to U[0].Count-1 do begin
-                    if checkX_range(U[0].Arr^[j],Yvalue) then begin
-                        // находим интервал значений для интерполяции
-                        nXindex := fXarr_data.Count-1;
-                        Find1(U[0].Arr^[j],px,fXarr_data.Count,nXindex);
-                        Y[0].arr^[c] := py[nXindex];
-                      end else begin
-                        Y[0].arr^[c] := Yvalue;
-                      end;
-
-                    inc(c);
-                    end;
-                end;
-           else
-              begin
-                Assert(False,'TInterpolBlock1d метод задания интерполяции не реализован');
-                exit(r_Fail);
-              end;
-           end;
+    // пересчитываем матрицы при необходимости
+    if CheckChanges or (Action = f_InitState) then begin
+      case fInterpolationType of
+         1:   // Линейная интерполяция
+                LInterpCalc(px, py, fSplineArr.Arr, fXarr_data.Count );
+         2:   //Вычисление натурального кубического сплайна
+                NaturalSplineCalc(px, py, fSplineArr.Arr, fXarr_data.Count, fIsNaturalSpline );
+        end;
       end;
-  end
+
+    //
+    for uInd:=0 to U[0].Count - 1 do begin
+     if checkX_inRange(U[0].Arr^[uInd],Yvalue) then begin
+       Y[0].arr^[uInd] := Yvalue;
+       continue;
+       end;
+
+     case fInterpolationType of
+       3:   // Лагранж
+          Y[0].arr^[uInd] := WLagrange(px,py,U[0].arr^[uInd],fLagrangeOrder,fXarr_data.Count);
+
+       2:   //Вычисление натурального кубического сплайна
+          Y[0].arr^[uInd] := Interpol(U[0].Arr^[uInd], fSplineArr.Arr, 5, fLastInd[uInd] );
+
+       1:   // Линейная интерполяция
+          Y[0].arr^[uInd] := Interpol(U[0].Arr^[uInd], fSplineArr.Arr, 3, fLastInd[uInd]);
+
+       0:     // кусочная интерполяция.
+          begin
+            // находим интервал значений для интерполяции
+            nXindex := fXarr_data.Count-1;
+            Find1(U[0].Arr^[uInd],px,fXarr_data.Count,nXindex);
+            Y[0].arr^[uInd] := py[nXindex];
+          end;
+       else
+          begin
+            Assert(False,'TInterpolBlock1d метод задания интерполяции не реализован');
+            exit(r_Fail);
+          end;
+       end;
+      end;
+    end;
+  end;
 end;
 
 /////////////////////////////////////////////////////////////////////////////
@@ -776,7 +743,7 @@ begin
 
 end;
 //----------------------------------------------------------------------------
-function TInterpolBlockXY.checkXY_Range(var aX1,aX2: RealType;var aZvalue: RealType): Boolean;
+function TInterpolBlockXY.checkXY_inRange(var aX1,aX2: RealType;var aZvalue: RealType): Boolean;
 // проверить, что аргументы aX и aY находится внутри диапазона определения функции.
 // возвращает - True - аргументы находится внутри диапазона и экстраполяция не требуется.
 // иначе - False, и изменяет AYValue на значение экстраполяции
@@ -1088,7 +1055,8 @@ end;
 
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
- var i: integer;
+ var
+ uInd: integer;
  Yval: RealType;
 begin
   Result:=r_Success;
@@ -1112,48 +1080,30 @@ begin
           exit(r_Fail);
           end;
 
-        case fInterpolationType of
 
+        for uInd:=0 to U[0].Count - 1 do begin
+
+        if not checkXY_inRange(U[0].Arr^[uInd],U[1].Arr^[uInd],Yval) then begin
+          Y[0].Arr^[uInd]:=Yval;
+          continue;
+          end;
+
+        case fInterpolationType of
             0:  // линейная
-              begin
-              for i:=0 to U[0].Count - 1 do
-                if checkXY_Range(U[0].Arr^[i],U[1].Arr^[i],Yval) then begin
-                  Y[0].Arr^[i]:=fTable.GetFunValue(U[0].Arr^[i],U[1].Arr^[i]); end
-                  else begin
-                  Y[0].Arr^[i]:=Yval; end;
-              end;
+              Y[0].Arr^[uInd]:=fTable.GetFunValue(U[0].Arr^[uInd],U[1].Arr^[uInd]);
 
             1:  // кусочно-постоянная
-               begin
-                 for i:=0 to U[0].Count - 1 do
-                  if checkXY_Range(U[0].Arr^[i],U[1].Arr^[i],Yval) then begin
-                    Y[0].Arr^[i]:=fTable.GetFunValueWithoutInterpolation(U[0].Arr^[i],U[1].Arr^[i]); end
-                    else begin
-                    Y[0].Arr^[i]:=Yval;
-                    end;
-               end;
+              Y[0].Arr^[uInd]:=fTable.GetFunValueWithoutInterpolation(U[0].Arr^[uInd],U[1].Arr^[uInd]);
 
             2: // сплайны
-              begin
-                  for i:=0 to U[0].Count - 1 do
-                    if checkXY_Range(U[0].Arr^[i],U[1].Arr^[i],Yval) then begin
-                    Y[0].Arr^[i]:=fTable.GetFunValueBySplineInterpolation(U[0].Arr^[i],U[1].Arr^[i]); end
-                    else begin
-                    Y[0].Arr^[i]:=Yval;
-                    end;
-              end;
+              Y[0].Arr^[uInd]:=fTable.GetFunValueBySplineInterpolation(U[0].Arr^[uInd],U[1].Arr^[uInd]);
 
             3: // Акима
-              begin
-                  for i:=0 to U[0].Count - 1 do
-                    if checkXY_Range(U[0].Arr^[i],U[1].Arr^[i],Yval) then begin
-                      Y[0].Arr^[i]:=fTable.GetFunValueByAkimaInterpolation(U[0].Arr^[i],U[1].Arr^[i]); end
-                      else begin
-                      Y[0].Arr^[i]:=Yval;
-                      end;
-              end;
+              Y[0].Arr^[uInd]:=fTable.GetFunValueByAkimaInterpolation(U[0].Arr^[uInd],U[1].Arr^[uInd]);
+
           else
             Assert(False,'TInterpolBlockXY метод интерполяции не реализован');
+        end;
         end;
       end;
 
