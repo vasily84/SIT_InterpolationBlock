@@ -10,12 +10,12 @@ unit RealArrays_Utils;
 
 interface
 
-uses {$IFNDEF FPC}Windows,{$ENDIF}Classes, DataTypes, Data_blocks;
+uses {$IFNDEF FPC}Windows,{$ENDIF}Classes, DataTypes, Data_blocks,tbls;
 
 function TExtArray_IsOrdered(aArr: TExtArray): Boolean;
 function TExtArray_HasDuplicates(aArr: TExtArray): Boolean;
 procedure TExtArray_Sort_XY_Arr(aXarr,aYarr: TExtArray);
-
+procedure TTable2_Sort(aTable: TTable2);
 
 function Load_TExtArray_FromFile(aFileName: string; var aArray1: TExtArray): Boolean;
 function Load_2TExtArrays_FromFile(aFileName: string; var aXarr,aYarr: TExtArray): Boolean;
@@ -78,18 +78,20 @@ function TExtArray_HasDuplicates(aArr: TExtArray): Boolean;
 // проверить, есть ли дупликаты значений в массиве
 var
   i,j: Integer;
+  a,b:RealType;
 begin
   Result := False;
   for i:=0 to aArr.Count-2 do
     for j:=i+1 to aArr.Count-1 do begin
+      a := aArr[i];
+      b := aArr[j];
       if(aArr[i]=aArr[j]) then exit(True);
       end;
 end;
 
 //----------------------------------------------------------------------------
 procedure TExtArray_Sort_XY_Arr(aXarr,aYarr: TExtArray);
-// отсортировать по возрастанию X пары значений (X;Y). Yi - векторный,
-// длина Y должна быть кратна X
+// отсортировать по возрастанию X пары значений (X;Y)
 procedure swapPoint(q,w: Integer);
 // поменять точки q,w местами
 var
@@ -107,21 +109,100 @@ var
   minX: RealType;
   minIndex: Integer;
   i,j: Integer;
+  tailOrdered: Boolean;
 begin
   for i:=0 to aXarr.Count-2 do begin
     minX := aXarr[i];
     minIndex := i;
+    tailOrdered:=True;
     for j:=i+1 to aXarr.Count-1 do begin
       if minX>aXarr[j] then begin
         minX := aXarr[j];
         minIndex := j;
         end;
+      if aXarr[j-1]>aXarr[j] then tailOrdered:=False; // хвост массива неупорядочен
       end;
 
     if minIndex<>i then swapPoint(i,minIndex);
+    if tailOrdered then break;  // остаток массива упорядочен, сортировка завершена
     end;
 end;
-//===========================================================================
+//---------------------------------------------------------------------------
+procedure TTable2_swapRows(aTable: TTable2; aRowI,aRowJ: Integer);
+var
+  y: RealType;
+  i:Integer;
+begin
+  y:=aTable.px1[aRowI];
+  aTable.px1[aRowI]:=aTable.px1[aRowj];
+  aTable.px1[aRowJ]:=y;
+
+  for i:=0 to aTable.py.GetMaxCountY-1 do begin
+    y:=aTable.py[aRowI][i];
+    aTable.py[aRowI][i]:=aTable.py[aRowj][i];
+    aTable.py[aRowJ][i]:=y;
+    end;
+end;
+
+procedure TTable2_swapCols(aTable: TTable2; aColI,aColJ: Integer);
+var
+  y: RealType;
+  i:Integer;
+begin
+  y:=aTable.px2[aColI];
+  aTable.px2[aColI]:=aTable.px2[aColJ];
+  aTable.px2[aColJ]:=y;
+
+  for i:=0 to aTable.py.CountX-1 do begin
+    y:=aTable.py[i][aColI];
+    aTable.py[i][aColI]:=aTable.py[i][aColJ];
+    aTable.py[i][aColJ]:=y;
+    end;
+end;
+
+procedure TTable2_Sort(aTable: TTable2);
+// отсортировать таблицу по возрастанию аргументов строк и столбцов
+var
+  minVal: RealType;
+  minIndex: Integer;
+  i,j: Integer;
+  tailOrdered: Boolean;
+begin
+
+  for i:=0 to aTable.px1.Count-2 do begin
+    minVal := aTable.px1[i];
+    minIndex := i;
+    tailOrdered:=True;
+    for j:=i+1 to aTable.px1.Count-1 do begin
+      if minVal>aTable.px1[j] then begin
+        minVal := aTable.px1[j];
+        minIndex := j;
+        end;
+      if aTable.px1[j-1]>aTable.px1[j] then tailOrdered:=False; // хвост массива неупорядочен
+      end;
+
+    if minIndex<>i then TTable2_swapRows(aTable,i,minIndex);
+    if tailOrdered then break;  // остаток массива упорядочен, сортировка завершена
+    end;
+
+  for i:=0 to aTable.px2.Count-2 do begin
+    minVal := aTable.px2[i];
+    minIndex := i;
+    tailOrdered:=True;
+    for j:=i+1 to aTable.px2.Count-1 do begin
+      if minVal>aTable.px2[j] then begin
+        minVal := aTable.px2[j];
+        minIndex := j;
+        end;
+      if aTable.px2[j-1]>aTable.px2[j] then tailOrdered:=False; // хвост массива неупорядочен
+      end;
+
+    if minIndex<>i then TTable2_swapCols(aTable,i,minIndex);
+    if tailOrdered then break;  // остаток массива упорядочен, сортировка завершена
+    end;
+
+end;
+
 //---------------------------------------------------------------------------
 procedure RemoveCommentsFromStrings(var aStrings:TStringList);
 // пустые строки, строки начинающиеся с $, части строк за // - отбрасываем
@@ -155,11 +236,22 @@ begin
 end;
 
 //---------------------------------------------------------------------------
+function findDelim(aStr: string): string;
+begin
+  if Pos(';',aStr)>0 then Exit(';');
+  if Pos(',',aStr)>0 then Exit(',');
+  if Pos('|',aStr)>0 then Exit('|');
+  if Pos(#9,aStr)>0 then Exit(#9);   // табуляция
+  // самый дурацкий вариант - разделитель пробел
+  Result := ' ';
+end;
+
+//---------------------------------------------------------------------------
 function Load_TExtArray_FromFile(aFileName: string; var aArray1: TExtArray): Boolean;
 // загрузить вектор из файла, отбросив комментарии и форматирование.
 var
   slist1: TStringList;
-  str1: string;
+  str1,strLineBreak: string;
   v1: RealType;
   i: Integer;
 begin
@@ -171,7 +263,17 @@ begin
     slist1.LoadFromFile(aFileName);
     RemoveCommentsFromStrings(slist1);
     // TODO!! развернуть вариант с записью данных в одну строчку с разделителем , или ;
+    str1 := slist1.Text;
+    strLineBreak := findDelim(str1);
+    // замена табов на пробелы - ибо люди и текстовые редакторы часто используют пробелы вместо табов и наоборот
+    str1 := StringReplace(str1, #13#10, strLineBreak, [rfReplaceAll, rfIgnoreCase]);
 
+    slist1.Clear;
+    slist1.LineBreak:=strLineBreak;
+    slist1.Text := str1;
+
+    // удаляем пустые строки - могут появится из-за двойных пробелов и т.п.
+    RemoveCommentsFromStrings(slist1);
     aArray1.Count := slist1.Count;
     for i:=0 to slist1.Count-1 do begin
       str1 := slist1.Strings[i];
@@ -190,20 +292,11 @@ end;
 function Load_TExtArray2_FromCsvFile(aFileName: string; var aArrayVect: TExtArray2): Boolean;
 // загрузить массив векторов из csv-файла. Возможные разделители - запятая, двоеточие,
 // таб, пробел. Пробелы и табы могут быть смешаны. Все вектора должны быть одинаковой длины.
-function findDelim(aStr: string): string;
-begin
-  if Pos(';',aStr)>0 then Exit(';');
-  if Pos(',',aStr)>0 then Exit(',');
-  if Pos(#9,aStr)>0 then Exit(#9);   // табуляция
-  // самый дурацкий вариант - разделитель пробел
-  Result := ' ';
-end;
-//------
 var
   slRows,slCols: TStringList;
-  str1,str2,strLineBreak: string;
+  str2,strLineBreak: string;
   v1: RealType;
-  i,j,k,NN: integer;
+  i,j: integer;
   countRows,countCols: Integer;
 begin
   Result := True;
@@ -225,38 +318,28 @@ begin
     slCols.Text := slRows.Strings[0];
 
     // подсчитываем реальное число значимых записей в строке.
-    NN:=0;
-    for k:=0 to slCols.Count-1 do begin
-      str2 := Trim(slCols.Strings[k]);
-      if str2='' then continue;
-      inc(NN);
-      end;
+    RemoveCommentsFromStrings(slCols);
 
-    countCols:= NN;
+    countCols:= slCols.Count;
     aArrayVect.ChangeCount(countRows, countCols);
 
     for i:=0 to countRows-1 do begin
-      str1 := slRows.Strings[i];
-
       slCols.Clear;
       slCols.LineBreak := strLineBreak;
-      slCols.Text := str1;
+      slCols.Text := slRows.Strings[i];
+      RemoveCommentsFromStrings(slCols);
 
-      NN:=0;
-      for j:=0 to slCols.Count-1 do begin
-        str2 := Trim(slCols.Strings[j]);
-        if str2='' then continue; // не обрабатываем пустые символы
-
-        v1 := StrToFloat(str2);
-        aArrayVect[i][NN] := v1;
-        inc(NN);
-        if NN>=countCols then break;
-        end;
-
-      if NN<>countCols then begin
+      if slCols.Count<>countCols then begin
         Result:=False;
         break;
         end;
+
+      for j:=0 to slCols.Count-1 do begin
+        str2 := Trim(slCols.Strings[j]);
+        v1 := StrToFloat(str2);
+        aArrayVect[i][j] := v1;
+        end;
+
       end;
 
   except

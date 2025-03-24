@@ -977,7 +977,10 @@ begin
     end;
 
   if Result then Result:=CheckData();
-  if Result then fDataOk:=True;
+  if Result then begin
+    fDataOk:=True;
+    TTable2_Sort(fTable);
+    end;
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.CheckData(): Boolean;
