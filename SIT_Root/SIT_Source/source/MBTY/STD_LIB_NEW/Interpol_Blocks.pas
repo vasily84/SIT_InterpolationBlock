@@ -163,7 +163,7 @@ const
 
   txtDimError = 'Некорректная размерность входных данных';
 
-  txtXiduplicates = 'таблица значений функции содержит дубликаты аргумента';
+  txtXiduplicates = 'Массив аргументов функции содержит дублирующиеся значения';
   txtFuncTableReordered = 'таблица значений функции переупорядочена по возрастанию аргумента';
 
 {$ELSE}
@@ -299,6 +299,11 @@ begin
 
   if not Load_TExtArray_FromFile(fFileNameVals, fYarr_data)then begin
     ErrorEvent(txtFileError1+fFileNameVals+txtFileError2, msError, VisualObject);
+    exit(False);
+    end;
+
+  if fXarr_data.Count<>fYarr_data.Count then begin
+    ErrorEvent('Размеры массивов в файлах '+fFileNameArgs+' и '+fFileNameVals+' не совпадают', msError, VisualObject);
     exit(False);
     end;
 
@@ -443,20 +448,20 @@ begin
   end;
 
   if Result then Result:=CheckData();
-  if Result then fDataOk:=True;
 
+  if Result then begin
+    fDataOk:=True;
+    // проверяем, есть ли в аргументах Х дубликаты
+    if TExtArray_HasDuplicates(fXarr_data) then begin
+      ErrorEvent(txtXiduplicates, msWarning, VisualObject);
+      end;
 
-  // проверяем, есть ли в аргументах Х дубликаты
-  if TExtArray_HasDuplicates(fXarr_data) then begin
-    ErrorEvent(txtXiduplicates, msWarning, VisualObject);
-    end;
-
-  // TODO - сейчас с дубликатами дуркует.
-  // проверяем, упорядочены ли точки. При необходимости - упорядочиваем
-  if not TExtArray_IsOrdered(fXarr_data) then begin
-    //ErrorEvent(txtFuncTableReordered, msWarning, VisualObject);
-    TExtArray_Sort_XY_Arr(fXarr_data, fYarr_data);
-    end;
+    // проверяем, упорядочены ли точки. При необходимости - упорядочиваем
+    if not TExtArray_IsOrdered(fXarr_data) then begin
+      //ErrorEvent(txtFuncTableReordered, msWarning, VisualObject);
+      TExtArray_Sort_XY_Arr(fXarr_data, fYarr_data);
+      end;
+  end;
 
 end;
 //===========================================================================
@@ -743,40 +748,6 @@ begin
 
 end;
 //----------------------------------------------------------------------------
-function TInterpolBlockXY.checkXY_inRange(var aX1,aX2: RealType;var aZvalue: RealType): Boolean;
-// проверить, что аргументы aX и aY находится внутри диапазона определения функции.
-// возвращает - True - аргументы находится внутри диапазона и экстраполяция не требуется.
-// иначе - False, и изменяет AYValue на значение экстраполяции
-var
-  // признаки нахождения аргументов в границах диапазонов
-  x1_inRange,x2_inRange: Boolean;
-begin
-
-  if fExtrapolationType=2 then begin // экстраполировать границы для заданного метода
-    exit(True);
-    end;
-
-  x1_inRange := ((aX1>=fTable.px1[0])and(aX1<=fTable.px1[fTable.Arg1Count-1]));
-  x2_inRange := ((aX2>=fTable.px2[0])and(aX2<=fTable.px2[fTable.Arg2Count-1]));
-
-  if (x1_inRange and x2_inRange) then begin //в диапазоне, экстраполяция не требуется
-    exit(True);
-    end;
-
-  // за пределами диапазона, тип экстраполяции - ноль за пределами диапазона
-  if fExtrapolationType=1 then begin
-    aZvalue := 0;
-    exit(False);
-    end;
-
-  // кусочно-постоянная интерполяция
-  Result:=False;
-  // подставляем результат интервальной интерполяции
-  aZvalue := fTable.GetFunValueWithoutInterpolation(aX1,aX2);
-  // либо использовать
-  // table.GetFunValueWithoutExtrapolation
-end;
-//----------------------------------------------------------------------------
 function TInterpolBlockXY.LoadDataFromPorts(): Boolean;
 var
   i,j,M,N: Integer;
@@ -1018,9 +989,46 @@ begin
     end;
 end;
 //----------------------------------------------------------------------------
-function TInterpolBlockXY.InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;
+function TInterpolBlockXY.checkXY_inRange(var aX1,aX2: RealType;var aZvalue: RealType): Boolean;
+// проверить, что аргументы aX и aY находится внутри диапазона определения функции.
+// возвращает - True - аргументы находится внутри диапазона и экстраполяция не требуется.
+// иначе - False, и изменяет AYValue на значение экстраполяции
 var
-  M,N,T: Integer;
+  // признаки нахождения аргументов в границах диапазонов
+  x1_inRange,x2_inRange: Boolean;
+begin
+
+  if fExtrapolationType=2 then begin // экстраполировать границы для заданного метода
+    exit(True);
+    end;
+
+  x1_inRange := ((aX1>=fTable.px1[0])and(aX1<=fTable.px1[fTable.Arg1Count-1]));
+  x2_inRange := ((aX2>=fTable.px2[0])and(aX2<=fTable.px2[fTable.Arg2Count-1]));
+
+  if (x1_inRange and x2_inRange) then begin //в диапазоне, экстраполяция не требуется
+    exit(True);
+    end;
+
+  // за пределами диапазона, тип экстраполяции - ноль за пределами диапазона
+  if fExtrapolationType=1 then begin
+    aZvalue := 0;
+    exit(False);
+    end;
+
+  // кусочно-постоянная интерполяция - продолжаем функцию ее значениями на границе
+  Result:=True;
+  if(aX1<fTable.px1[0]) then aX1:=fTable.px1[0];
+  if(aX1>fTable.px1[fTable.Arg1Count-1]) then aX1:=fTable.px1[fTable.Arg1Count-1];
+  if(aX2<fTable.px2[0]) then aX2:=fTable.px2[0];
+  if(aX2>fTable.px2[fTable.Arg2Count-1]) then aX2:=fTable.px2[fTable.Arg2Count-1];
+
+  // подставляем результат интервальной интерполяции
+  //aZvalue := fTable.GetFunValueWithoutInterpolation(aX1,aX2);
+  // либо использовать
+  // table.GetFunValueWithoutExtrapolation
+end;
+//-----------------------------------------------------------------------------
+function TInterpolBlockXY.InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;
 begin
   Result:=r_Success;
   case Action of
@@ -1035,17 +1043,9 @@ begin
              cY[0].Dim:=cU[0].Dim;
             end;
 
-          // при задании через порты проверяем их размерность
+          // при задании через порты проверяем-задаем их размерность
           if Length(cU) > FUNCS_TABLE  then begin
-            N := GetFullDim(cU[ROW_ARGS_ARR].Dim);
-            M := GetFullDim(cU[COL_ARGS_ARR].Dim);
-            T := GetFullDim(cU[FUNCS_TABLE].Dim);
-
-            if(M*N<>T) then begin
-              ErrorEvent(txtDimError, msError, VisualObject);
-              exit(r_Fail);
-              end;
-
+            cU[FUNCS_TABLE].Dim := SetDim([GetFullDim(cU[COL_ARGS_ARR].Dim),GetFullDim(cU[ROW_ARGS_ARR].Dim)]);
             end;
           end;
   else
@@ -1107,7 +1107,7 @@ begin
         end;
       end;
 
-  end
+  end;
 end;
 //--------------------------------------------------------------------------
 /////////////////////////////////////////////////////////////////////////////

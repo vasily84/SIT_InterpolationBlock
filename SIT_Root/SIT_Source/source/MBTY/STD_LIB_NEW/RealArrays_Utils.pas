@@ -69,24 +69,21 @@ var
   i: Integer;
 begin
   Result := True;
-  for i:=0 to aArr.Count-2 do begin
-    if(aArr[i+1]<aArr[i]) then begin
-      exit(False);
-      end;
-    end;
+  for i:=0 to aArr.Count-2 do
+    if(aArr[i+1]<aArr[i]) then exit(False);
+
 end;
 //---------------------------------------------------------------------------
 function TExtArray_HasDuplicates(aArr: TExtArray): Boolean;
 // проверить, есть ли дупликаты значений в массиве
 var
-  i: Integer;
+  i,j: Integer;
 begin
   Result := False;
-  for i:=0 to aArr.Count-2 do begin
-    if(aArr[i+1]=aArr[i]) then begin
-      exit(True);
+  for i:=0 to aArr.Count-2 do
+    for j:=i+1 to aArr.Count-1 do begin
+      if(aArr[i]=aArr[j]) then exit(True);
       end;
-    end;
 end;
 
 //----------------------------------------------------------------------------
@@ -128,6 +125,7 @@ end;
 //---------------------------------------------------------------------------
 procedure RemoveCommentsFromStrings(var aStrings:TStringList);
 // пустые строки, строки начинающиеся с $, части строк за // - отбрасываем
+// табы заменяем на пробелы
 var
   slist2: TStringList;
   i,position: Integer;
@@ -148,6 +146,9 @@ begin
     if str1='' then continue; // отбрасываем пустые строки
     slist2.Add(str1);
     end;
+
+  // замена табов на пробелы - ибо люди и текстовые редакторы часто используют пробелы вместо табов и наоборот
+  slist2.Text := StringReplace(slist2.Text, #9, ' ', [rfReplaceAll, rfIgnoreCase]);
 
   aStrings.Assign(slist2);
   FreeAndNil(slist2);
@@ -187,50 +188,74 @@ end;
 
 //---------------------------------------------------------------------------
 function Load_TExtArray2_FromCsvFile(aFileName: string; var aArrayVect: TExtArray2): Boolean;
-// загрузить массив векторов из файла
+// загрузить массив векторов из csv-файла. Возможные разделители - запятая, двоеточие,
+// таб, пробел. Пробелы и табы могут быть смешаны. Все вектора должны быть одинаковой длины.
+function findDelim(aStr: string): string;
+begin
+  if Pos(';',aStr)>0 then Exit(';');
+  if Pos(',',aStr)>0 then Exit(',');
+  if Pos(#9,aStr)>0 then Exit(#9);   // табуляция
+  // самый дурацкий вариант - разделитель пробел
+  Result := ' ';
+end;
+//------
 var
-  slist1,slist2: TStringList;
-  str1,str2: string;
+  slRows,slCols: TStringList;
+  str1,str2,strLineBreak: string;
   v1: RealType;
-  i,j: integer;
-  countX,countY: Integer;
+  i,j,k,NN: integer;
+  countRows,countCols: Integer;
 begin
   Result := True;
   aFileName := ExpandFileName(aFileName);
 
   try
-    slist1 := TStringList.Create;
-    slist2 := TStringList.Create;
+    slRows := TStringList.Create;
+    slCols := TStringList.Create;
 
-    slist1.LoadFromFile(aFileName);
+    slRows.LoadFromFile(aFileName);
     // отбрасываем комментарии и пустые строки
-    RemoveCommentsFromStrings(slist1);
+    RemoveCommentsFromStrings(slRows);
 
-    str1 := slist1.Text;
-    // замена , на ;
-    str1 := StringReplace(str1, ',', ';', [rfReplaceAll, rfIgnoreCase]);
-    slist1.Text := str1;
-    countX := slist1.Count;
-    slist2.Clear;
-    slist2.LineBreak:=';';
-    slist2.Text := slist1.Strings[0];
-    countY:= slist2.Count;
+    countRows := slRows.Count;
 
-    aArrayVect.ChangeCount(countX, countY);
+    strLineBreak := findDelim(slRows.Strings[0]);
+    slCols.Clear;
+    slCols.LineBreak:=strLineBreak;
+    slCols.Text := slRows.Strings[0];
 
-    for i:=0 to countX-1 do begin
-      str1 := slist1.Strings[i];
+    // подсчитываем реальное число значимых записей в строке.
+    NN:=0;
+    for k:=0 to slCols.Count-1 do begin
+      str2 := Trim(slCols.Strings[k]);
+      if str2='' then continue;
+      inc(NN);
+      end;
 
-      slist2.Clear;
-      slist2.LineBreak := ';';
-      slist2.Text := str1;
+    countCols:= NN;
+    aArrayVect.ChangeCount(countRows, countCols);
 
-      if countY<>slist2.Count then Result:=False;
-      
-      for j:=0 to countY-1 do begin
-        str2 := Trim(slist2.Strings[j]);
+    for i:=0 to countRows-1 do begin
+      str1 := slRows.Strings[i];
+
+      slCols.Clear;
+      slCols.LineBreak := strLineBreak;
+      slCols.Text := str1;
+
+      NN:=0;
+      for j:=0 to slCols.Count-1 do begin
+        str2 := Trim(slCols.Strings[j]);
+        if str2='' then continue; // не обрабатываем пустые символы
+
         v1 := StrToFloat(str2);
-        aArrayVect[i][j] := v1;
+        aArrayVect[i][NN] := v1;
+        inc(NN);
+        if NN>=countCols then break;
+        end;
+
+      if NN<>countCols then begin
+        Result:=False;
+        break;
         end;
       end;
 
@@ -238,64 +263,22 @@ begin
     Result := False;
   end;
 
-  FreeAndNil(slist1);
-  FreeAndNil(slist2);
+  FreeAndNil(slRows);
+  FreeAndNil(slCols);
 end;
 //---------------------------------------------------------------------------
 function Load_2TExtArrays_FromFile(aFileName: string; var aXarr,aYarr: TExtArray): Boolean;
-// загрузить массив векторов из файла
+// загрузить 2 массива из файла
 var
-  slist1,slist2: TStringList;
-  str1,str2: string;
-  vX,vY: RealType;
-  i: integer;
-  countX,countY: Integer;
+  csvArr: TExtArray2;
 begin
-  Result := True;
-  aFileName := ExpandFileName(aFileName);
-
-  try
-    slist1 := TStringList.Create;
-    slist2 := TStringList.Create;
-
-    slist1.LoadFromFile(aFileName);
-    // отбрасываем комментарии и пустые строки
-    RemoveCommentsFromStrings(slist1);
-
-    str1 := slist1.Text;
-    // замена , на ;
-    str1 := StringReplace(str1, ',', ';', [rfReplaceAll, rfIgnoreCase]);
-    slist1.Text := str1;
-    countX := slist1.Count;
-    aXarr.Count := countX;
-    aYarr.Count := countX;
-
-    for i:=0 to countX-1 do begin
-      str1 := slist1.Strings[i];
-
-      slist2.Clear;
-      slist2.LineBreak := ';';
-      slist2.Text := str1;
-
-      countY := slist2.Count;
-      if countY<>2 then Result:=False;
-
-      str2 := Trim(slist2.Strings[0]);
-      vX := StrToFloat(str2);
-
-      str2 := Trim(slist2.Strings[1]);
-      vY := StrToFloat(str2);
-
-      aXarr[i] := vX;
-      aYarr[i] := vY;
-      end;
-
-  except
-    Result := False;
-  end;
-
-  FreeAndNil(slist1);
-  FreeAndNil(slist2);
+  csvArr := TExtArray2.Create(1,1);
+  Result := Load_TExtArray2_FromCsvFile(aFileName, csvArr);
+  if Result and (csvArr.GetMaxCountY=2) then begin
+    TExtArray_cpy(aXarr,csvArr.Arr[0]);
+    TExtArray_cpy(aYarr,csvArr.Arr[1]);
+    end;
+  FreeAndNil(csvArr);
 end;
 
 //---------------------------------------------------------------------------
@@ -365,6 +348,7 @@ end;
 
 function TExtArray2_From_TExtArray(var ADstTable: TExtArray2;const ASrc: TExtArray; XCount,YCount: Integer):Boolean;
 // скопировать данные из массива в таблицу заданной размерности
+
 var
   i,j,k: Integer;
 begin
