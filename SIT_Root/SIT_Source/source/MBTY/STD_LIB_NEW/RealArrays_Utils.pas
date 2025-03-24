@@ -25,9 +25,10 @@ function Load_TExtArray2_FromCsvFile(aFileName: string; var aArrayVect: TExtArra
 function Load_TExtArray_FromBinFile(aFileName: string; var aArray1: TExtArray; Asizeofreal:integer=8): Integer;
 procedure Save_TExtArray_ToBinFile(aFileName: string; var aArray1: TExtArray);
 
-
 procedure TExtArray_cpy(var ADst: TExtArray;const ASrc: TExtArray);
 procedure TExtArray2_cpy(var ADst: TExtArray2;const ASrc: TExtArray2);
+function TExtArray_IsSame(const aVect1,aVect2: TExtArray):Boolean;
+
 
 function TExtArray2_From_TExtArray(var ADstTable: TExtArray2;const ASrc: TExtArray; XCount,YCount: Integer):Boolean;
 
@@ -62,6 +63,20 @@ begin
     end;
 
 end;
+
+function TExtArray_IsSame(const aVect1,aVect2: TExtArray):Boolean;
+// массивы одинаковы?
+var
+  i: Integer;
+begin
+  if aVect1.Count<>aVect2.Count then Exit(False);
+
+  for i:=0 to aVect1.Count-1 do
+    if aVect1[i]<>aVect2[i] then Exit(False);
+
+  Result:=True;
+end;
+
 
 function TExtArray_IsOrdered(aArr: TExtArray): Boolean;
 // проверить, упорядочен ли массив
@@ -319,7 +334,6 @@ begin
 
     // подсчитываем реальное число значимых записей в строке.
     RemoveCommentsFromStrings(slCols);
-
     countCols:= slCols.Count;
     aArrayVect.ChangeCount(countRows, countCols);
 
@@ -354,12 +368,18 @@ function Load_2TExtArrays_FromFile(aFileName: string; var aXarr,aYarr: TExtArray
 // загрузить 2 массива из файла
 var
   csvArr: TExtArray2;
+  i: Integer;
 begin
   csvArr := TExtArray2.Create(1,1);
   Result := Load_TExtArray2_FromCsvFile(aFileName, csvArr);
   if Result and (csvArr.GetMaxCountY=2) then begin
-    TExtArray_cpy(aXarr,csvArr.Arr[0]);
-    TExtArray_cpy(aYarr,csvArr.Arr[1]);
+    aXarr.Count := csvArr.CountX;
+    aYarr.Count := csvArr.CountX;
+
+    for i:=0 to csvArr.CountX-1 do begin
+      aXarr[i] := csvArr.Arr[i][0];
+      aYarr[i] := csvArr.Arr[i][1];
+      end;
     end;
   FreeAndNil(csvArr);
 end;

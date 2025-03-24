@@ -48,9 +48,6 @@ type
 
     fXarr_data, fYarr_data: TExtArray; // точки аргументов Xi и значений Fi функции для расчета
 
-    // Массивы иcходных данных - реально применяются только для отслеживания изменения входных данных
-    fX_stamp,fY_stamp: TExtArray2;
-
     fDataLength: Integer;
     fDataOk: Boolean;
     function LoadDataFromProperties(): Boolean;
@@ -185,8 +182,6 @@ begin
   fProp_Farr:= TExtArray.Create(1); // точки значений Fi функции, если она задана через свойства объекта
 
   fSplineArr := TExtArray2.Create(1,1);
-  fX_stamp := TExtArray2.Create(1,1);
-  fY_stamp := TExtArray2.Create(1,1);
 
   fXarr_data := TExtArray.Create(1); // точки аргументов Xi функции, если она считана из файла
   fYarr_data := TExtArray.Create(1);
@@ -196,11 +191,7 @@ destructor  TInterpolBlock1d.Destroy;
 begin
   FreeAndNil(fProp_Xarr);
   FreeAndNil(fProp_Farr);
-
   FreeAndNil(fSplineArr);
-  FreeAndNil(fX_stamp);
-  FreeAndNil(fY_stamp);
-
   FreeAndNil(fXarr_data);
   FreeAndNil(fYarr_data);
 
@@ -565,15 +556,20 @@ function  CheckChanges: Boolean;
 // Это Признак для пересчета внутренних матриц функций интерполяции
 var
   q: integer;
+  a,b: Boolean;
 begin
-  Result := False;
-  // TODO!! переделать на 1 мерный массивы
-  for q:=0 to fXarr_data.Count - 1 do // идем по данным, если видим неравенство - данные новые.
-    if (fX_stamp[0].Arr^[q] <> px[q]) or (fY_stamp[0].Arr^[q] <> py[q]) then begin
-      fX_stamp[0].Arr^[q] := px[q];
-      fY_stamp[0].Arr^[q] := py[q];
-      exit(True);
-      end;
+  // проверяем, изменились ли данные на входных портах
+  Result:=False;
+  if fInputMode<>3 then Exit;
+
+  a:=not TExtArray_IsSame(fXarr_data, U[1]);
+  b:=not TExtArray_IsSame(fYarr_data, U[2]);
+  if a or b then begin
+    TExtArray_cpy(fXarr_data, U[1]);
+    TExtArray_cpy(fYarr_data, U[2]);
+    Result:=True;
+    end;
+
 end;
 //--------------------------------------------------------------------------
 // -- начало самой RunFunc -------------------------------------------------
@@ -583,8 +579,15 @@ begin
   Result := r_Success;
 
   case Action of
-    f_InitState,
-    f_InitObjects:
+    (*
+    f_InitState:
+      begin
+        if not LoadData() then begin
+          exit(r_Fail);
+          end;
+      end;      *)
+    //f_InitObjects:
+    f_InitState:
       begin
         if not LoadData() then begin
           exit(r_Fail);
@@ -595,10 +598,20 @@ begin
         ZeroMemory(Pointer(fLastInd), GetFullDim(cU[0].Dim)*SizeOf(NativeInt));
         // TODO!! - выяснить минимально необходимую размерность аргументов.
         fSplineArr.ChangeCount(5, fXarr_data.Count);
-        fX_stamp.ChangeCount(1, fXarr_data.Count);
-        fY_stamp.ChangeCount(1, fYarr_data.Count);
+
+        px := fXarr_data.Arr;
+        py := fYarr_data.Arr;
+
+        case fInterpolationType of
+         1:   // Линейная интерполяция
+                LInterpCalc(px, py, fSplineArr.Arr, fXarr_data.Count );
+         2:   //Вычисление натурального кубического сплайна
+                NaturalSplineCalc(px, py, fSplineArr.Arr, fXarr_data.Count, fIsNaturalSpline );
+        end;
+
       end;
 
+    //f_InitState,
     f_RestoreOuts,
     f_UpdateJacoby,
     f_UpdateOuts,
@@ -625,10 +638,11 @@ begin
 
     //
     for uInd:=0 to U[0].Count - 1 do begin
-     if checkX_inRange(U[0].Arr^[uInd],Yvalue) then begin
+     if not checkX_inRange(U[0].Arr^[uInd],Yvalue) then begin
        Y[0].arr^[uInd] := Yvalue;
        continue;
        end;
+
 
      case fInterpolationType of
        3:   // Лагранж
