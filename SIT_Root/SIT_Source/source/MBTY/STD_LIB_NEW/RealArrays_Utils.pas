@@ -27,6 +27,7 @@ procedure Save_TExtArray_ToBinFile(aFileName: string; var aArray1: TExtArray);
 
 procedure TExtArray_cpy(var ADst: TExtArray;const ASrc: TExtArray);
 procedure TExtArray2_cpy(var ADst: TExtArray2;const ASrc: TExtArray2);
+
 function TExtArray_IsSame(const aVect1,aVect2: TExtArray):Boolean;
 
 
@@ -83,23 +84,20 @@ function TExtArray_IsOrdered(aArr: TExtArray): Boolean;
 var
   i: Integer;
 begin
-  Result := True;
   for i:=0 to aArr.Count-2 do
     if(aArr[i+1]<aArr[i]) then exit(False);
 
+  Result := True;
 end;
 //---------------------------------------------------------------------------
 function TExtArray_HasDuplicates(aArr: TExtArray): Boolean;
 // проверить, есть ли дупликаты значений в массиве
 var
   i,j: Integer;
-  a,b:RealType;
 begin
   Result := False;
   for i:=0 to aArr.Count-2 do
     for j:=i+1 to aArr.Count-1 do begin
-      a := aArr[i];
-      b := aArr[j];
       if(aArr[i]=aArr[j]) then exit(True);
       end;
 end;

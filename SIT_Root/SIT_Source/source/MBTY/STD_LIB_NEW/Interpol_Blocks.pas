@@ -49,7 +49,6 @@ type
     fXarr_data, fYarr_data: TExtArray; // точки аргументов Xi и значений Fi функции для расчета
 
     fDataLength: Integer;
-    fDataOk: Boolean;
     function LoadDataFromProperties(): Boolean;
     function LoadDataFrom2Files(): Boolean;
     function LoadDataFromFile(): Boolean;
@@ -81,7 +80,6 @@ type
     fProp_DataTable: TExtArray2;
 
     fDataLength: Integer;
-    fDataOk: Boolean;
     // функции загрузки значений в table. Возвращает True при успешной загрузке
     function LoadDataFromPorts(): Boolean;
     function LoadDataFromProperties(): Boolean;
@@ -124,7 +122,6 @@ type
    fU_,fV_:         TExtArray;
    fAd_,fK_:        TIntArray;
 
-   fDataOk: Boolean; // данные корректны, их можно использовать для расчета
    fDataLength: Integer;// длина загруженных данных
    function LoadDataFromProperties(): Boolean;
    function LoadDataFromJSON(): Boolean;
@@ -161,16 +158,26 @@ const
   txtDimError = 'Некорректная размерность входных данных';
 
   txtXiduplicates = 'Массив аргументов функции содержит дублирующиеся значения';
-  txtFuncTableReordered = 'таблица значений функции переупорядочена по возрастанию аргумента';
+  txtRowsDuplicates = 'Массив аргументов-строк функции содержит дублирующиеся значения';
+  txtColsDuplicates = 'Массив аргументов-столбцов функции содержит дублирующиеся значения';
 
+  txtFileDimErr1 = 'Размеры массивов в файлах ';
+  txtAnd = ' и ';
+  txtFileDimErr2 = ' не совпадают';
 {$ELSE}
   txtFiXiDimError = 'The number of values of F and arguments X of the input function does not match';
   txtFileError1 = 'File ';
   txtFileError2 = ' reading failed';
   txtDimError = 'Input data dimension error';
 
-  txtXiduplicates = 'The table of function values contains duplicate arguments';
-  txtFuncTableReordered = 'the table of function values is reordered in ascending order of the argument';
+  txtXiduplicates = 'The array of function arguments contains duplicate values';
+  txtRowsDuplicates = 'The array of function rows arguments contains duplicate values';
+  txtColsDuplicates = 'The array of function cols arguments contains duplicate values';
+
+  txtFileDimErr1 = 'the sizes of the arrays in the files ';
+  txtAnd = ' and ';
+  txtFileDimErr2 = ' do not match';
+
 {$ENDIF}
 
 //===========================================================================
@@ -294,7 +301,7 @@ begin
     end;
 
   if fXarr_data.Count<>fYarr_data.Count then begin
-    ErrorEvent('Размеры массивов в файлах '+fFileNameArgs+' и '+fFileNameVals+' не совпадают', msError, VisualObject);
+    ErrorEvent(txtFileDimErr1+fFileNameArgs+txtAnd+fFileNameVals+txtFileDimErr2, msError, VisualObject);
     exit(False);
     end;
 
@@ -413,7 +420,6 @@ end;
 //---------------------------------------------------------------------------
 function TInterpolBlock1d.LoadData(): Boolean;
 begin
-  fDataOk:=False;
 
   case fInputMode of
     0:
@@ -441,7 +447,6 @@ begin
   if Result then Result:=CheckData();
 
   if Result then begin
-    fDataOk:=True;
     // проверяем, есть ли в аргументах Х дубликаты
     if TExtArray_HasDuplicates(fXarr_data) then begin
       ErrorEvent(txtXiduplicates, msWarning, VisualObject);
@@ -464,7 +469,6 @@ begin
     i_GetCount: //Получить размерности входов\выходов
       begin
         if fInputMode=3 then begin // для случая задания функции через порты
-          //cU[2].Dim := cU[1].Dim;
           if GetFullDim(cU[1].Dim)<GetFullDim(cU[2].Dim) then
               cU[2].Dim := cU[1].Dim
             else
@@ -510,7 +514,7 @@ begin
 end;
 //=============================================================================
 
-// оригинальная версия, проверенная временем. После Рефакторинга. Изменения в вызове Лагарнжа.
+// оригинальная версия, проверенная временем. После Рефакторинга.
 function   TInterpolBlock1d.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
 var
   uInd: Integer;
@@ -550,23 +554,26 @@ begin
   // х внутри диапазона определения функции, экстраполяция не требуется
   Result := True;
 end;
-//------------------------------------------------------------------------
+
 function  CheckChanges: Boolean;
-// входной вектор был изменен?
+// данные на входных портах были изменены?
 // Это Признак для пересчета внутренних матриц функций интерполяции
 var
-  q: integer;
   a,b: Boolean;
 begin
   // проверяем, изменились ли данные на входных портах
   Result:=False;
   if fInputMode<>3 then Exit;
 
-  a:=not TExtArray_IsSame(fXarr_data, U[1]);
-  b:=not TExtArray_IsSame(fYarr_data, U[2]);
+  a := not TExtArray_IsSame(fXarr_data, U[1]);
+  b := not TExtArray_IsSame(fYarr_data, U[2]);
   if a or b then begin
     TExtArray_cpy(fXarr_data, U[1]);
     TExtArray_cpy(fYarr_data, U[2]);
+
+    if not TExtArray_IsOrdered(fXarr_data) then
+      TExtArray_Sort_XY_Arr(fXarr_data,fYarr_data);
+
     Result:=True;
     end;
 
@@ -579,14 +586,6 @@ begin
   Result := r_Success;
 
   case Action of
-    (*
-    f_InitState:
-      begin
-        if not LoadData() then begin
-          exit(r_Fail);
-          end;
-      end;      *)
-    //f_InitObjects:
     f_InitState:
       begin
         if not LoadData() then begin
@@ -617,17 +616,13 @@ begin
     f_UpdateOuts,
     f_GoodStep:
       begin
-        if not fDataOk then begin
-          exit(r_Fail);
-          end;
-
-        // U[0] - args - всегда значение аргумента X
-        // устанавливаем указатели на считанные данные
-        px := fXarr_data.Arr;
-        py := fYarr_data.Arr;
+    // U[0] - args - всегда значение аргумента X
+    // устанавливаем указатели на считанные данные
+    px := fXarr_data.Arr;
+    py := fYarr_data.Arr;
 
     // пересчитываем матрицы при необходимости
-    if CheckChanges or (Action = f_InitState) then begin
+    if CheckChanges then begin
       case fInterpolationType of
          1:   // Линейная интерполяция
                 LInterpCalc(px, py, fSplineArr.Arr, fXarr_data.Count );
@@ -832,7 +827,6 @@ begin
     exit(False);
     end;
 
-  // TODO!! добавить варианты чтения бинарника
   fDataLength:=fTable.py.CountX*fTable.py.GetMaxCountY;
   Result := True;
 end;
@@ -958,7 +952,6 @@ begin
   Result:=True;
   fTable.OpenFromFile(fFileName);
   if (fTable.px1.Count = 0) or (fTable.px2.Count = 0) then begin
-    //ErrorEvent(txtErrorReadTable,msError,VisualObject);
     exit(False);
     end;
 
@@ -967,7 +960,7 @@ end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.LoadData(): Boolean;
 begin
-  fDataOk:=False;
+
   case fInputMode of
     0:// ввести вручную через свойства
       Result:=LoadDataFromProperties();
@@ -992,9 +985,15 @@ begin
 
   if Result then Result:=CheckData();
   if Result then begin
-    fDataOk:=True;
     TTable2_Sort(fTable);
+
+    if TExtArray_HasDuplicates(fTable.px1) then
+      ErrorEvent(txtRowsDuplicates, msWarning,VisualObject);
+
+    if TExtArray_HasDuplicates(fTable.px2) then
+      ErrorEvent(txtColsDuplicates, msWarning,VisualObject);
     end;
+
 end;
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.CheckData(): Boolean;
@@ -1039,10 +1038,6 @@ begin
   if(aX2<fTable.px2[0]) then aX2:=fTable.px2[0];
   if(aX2>fTable.px2[fTable.Arg2Count-1]) then aX2:=fTable.px2[fTable.Arg2Count-1];
 
-  // подставляем результат интервальной интерполяции
-  //aZvalue := fTable.GetFunValueWithoutInterpolation(aX1,aX2);
-  // либо использовать
-  // table.GetFunValueWithoutExtrapolation
 end;
 //-----------------------------------------------------------------------------
 function TInterpolBlockXY.InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;
@@ -1079,13 +1074,12 @@ begin
   Result:=r_Success;
 
   case Action of
-    f_InitObjects,
     f_InitState:  // можно сделать общую загрузку и проверки для режимов файла
       begin
        //Загрузка данных из файла с таблицей или портов
        if not LoadData() then begin
          exit(r_Fail);
-        end;
+         end;
       end;
 
     f_UpdateJacoby,
@@ -1093,10 +1087,6 @@ begin
     f_RestoreOuts,
     f_GoodStep:
       begin
-        if not fDataOk then begin
-          exit(r_Fail);
-          end;
-
 
         for uInd:=0 to U[0].Count - 1 do begin
 
@@ -1169,46 +1159,21 @@ end;
 
 //--------------------------------------------------------------------------
 function     TInterpolBlockMultiDim.InfoFunc(Action: integer;aParameter: NativeInt):NativeInt;
- var p,i,nn: NativeInt;
+var
+  nn: NativeInt;
 begin
   Result:=r_Success;
 
   case Action of
-    i_GetPropErr: // проверка размерностей
-      begin
-        if not LoadData() then begin
-              exit(r_Fail);
-              end;
-
-        if fXtable.CountX <= 0 then begin
-          ErrorEvent(txtDimensionsNotDefined,msError,VisualObject);
-          exit(r_Fail);
-          end;
-
-        //Вычисляем суммарную размерность
-        p:=fXtable[0].Count;
-        for i := 1 to fXtable.CountX - 1 do p:=p*fXtable[i].Count;
-
-        //Проверяем всё ли задано в массиве val_
-        if fFtable.Count > 0 then begin
-          if fFtable.Count < p then begin
-             ErrorEvent(txtOrdinatesDefineIncomplete+IntToStr(p),msWarning,VisualObject);
-             exit(r_Fail);
-             end;
-          end;
-      end;
-
     i_GetCount:
       begin
-        if not LoadData() then begin
-          exit(r_Fail);
-          end;
+        if not LoadData() then Exit(r_Fail);
 
-          //Размерность выхода = размерность входа делённая на размерность матрицы абсцисс
-          cY[0].Dim:= SetDim([ GetFullDim(cU[0].Dim) div fXtable.CountX ]);
-          //Условие кратности рзмерности
-          nn := cY[0].Dim[0]*fXtable.CountX;
-          if GetFullDim(cU[0].Dim) <> nn then cU[0].Dim:=SetDim([nn]);
+        //Размерность выхода = размерность входа делённая на размерность матрицы абсцисс
+        cY[0].Dim:= SetDim([ GetFullDim(cU[0].Dim) div fXtable.CountX ]);
+        //Условие кратности размерности
+        nn := cY[0].Dim[0]*fXtable.CountX;
+        if GetFullDim(cU[0].Dim) <> nn then cU[0].Dim:=SetDim([nn]);
       end
     else
       Result:=inherited InfoFunc(Action,aParameter);
@@ -1217,14 +1182,31 @@ end;
 //--------------------------------------------------------------------------
 function    TInterpolBlockMultiDim.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
  var
-    i,j: integer;
+    i,j,p: integer;
 begin
   Result := r_Success;
   case Action of
-    f_InitObjects:
+
+    f_InitState:
       begin
-        if not LoadData() then begin
+        // подгружаем данные, если они задаются в свойствах
+        //if ((fInputMode=0)and(LoadData=False)) then exit(r_Fail);
+
+        if fXtable.CountX <= 0 then begin
+          ErrorEvent(txtDimensionsNotDefined,msError,VisualObject);
           exit(r_Fail);
+          end;
+
+        //Проверяем всё ли задано в массиве val_
+        if fFtable.Count > 0 then begin
+          //Вычисляем суммарную размерность
+          p:=1;
+          for i := 0 to (fXtable.CountX-1) do p:=p*fXtable[i].Count;
+
+          if fFtable.Count < p then begin
+             ErrorEvent(txtOrdinatesDefineIncomplete+IntToStr(p),msWarning,VisualObject);
+             exit(r_Fail);
+             end;
           end;
 
           //Подчитываем к-во точек по размерности входа
@@ -1237,23 +1219,12 @@ begin
         fK_.Count  := fXtable.CountX;
       end;
 
-    f_InitState:
-      begin
-      if not CheckData() then begin
-          exit(r_Fail);
-          end;
-      end;
 
     f_RestoreOuts,
     f_UpdateOuts,
     f_UpdateJacoby,
     f_GoodStep:
       begin
-
-        if not fDataOk then begin
-          exit(r_Fail);
-          end;
-
         j:=0;
         // копируем аргумент из входного вектора U во временное хранилище
         for i := 0 to ftempXp.CountX - 1 do begin
@@ -1263,9 +1234,12 @@ begin
 
 
         case fInterpolationType of
-          1: nstep_interp(fXtable,fFtable,ftempXp,Y[0],fExtrapolationType,fK_);
+          0:
+            nlinear_interp(fXtable,fFtable,ftempXp,Y[0],fExtrapolationType,fU_,fV_,fAd_,fK_);
+          1:
+            nstep_interp(fXtable,fFtable,ftempXp,Y[0],fExtrapolationType,fK_);
         else
-          nlinear_interp(fXtable,fFtable,ftempXp,Y[0],fExtrapolationType,fU_,fV_,fAd_,fK_);
+            Assert(False,'TInterpolBlockMultiDim метод интерполяции не реализован');
         end;
 
         end;
@@ -1274,7 +1248,6 @@ end;
 //--------------------------------------------------------------------------
 function TInterpolBlockMultiDim.LoadData(): Boolean;
 begin
-  fDataOk:=False;
 
   case fInputMode of
   0:
@@ -1295,7 +1268,6 @@ begin
   end;
 
   if Result then Result:=CheckData();
-  if Result then fDataOk:=True; // данные корректно загружены
 end;
 //---------------------------------------------------------------------------
 function TInterpolBlockMultiDim.CheckData(): Boolean;
@@ -1315,6 +1287,14 @@ begin
     exit(False);
     end;
 
+end;
+//---------------------------------------------------------------------------
+function TInterpolBlockMultiDim.LoadDataFromProperties(): Boolean;
+begin
+  TExtArray2_cpy(fXtable,fProp_X);
+  TExtArray_cpy(fFtable, fProp_F);
+  fDataLength := fProp_F.Count;
+  Result := True;
 end;
 //---------------------------------------------------------------------------
 {$IFNDEF FPC}
@@ -1442,14 +1422,7 @@ begin
 end;
 {$ENDIF}
 
-//---------------------------------------------------------------------------
-function TInterpolBlockMultiDim.LoadDataFromProperties(): Boolean;
-begin
-  TExtArray2_cpy(fXtable,fProp_X);
-  TExtArray_cpy(fFtable, fProp_F);
-  fDataLength := fProp_F.Count;
-  Result := True;
-end;
+
 //---------------------------------------------------------------------------
 function    TInterpolBlockMultiDim.GetParamID(const ParamName:string;var DataType:TDataType;var IsConst: boolean):NativeInt;
 begin
