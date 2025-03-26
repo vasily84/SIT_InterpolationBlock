@@ -79,6 +79,7 @@ type
     fProp_X1arr, fProp_X2arr: TExtArray;
     fProp_DataTable: TExtArray2;
 
+    fFuncDataPort_stamp: TExtArray;
     fDataLength: Integer;
     // функции загрузки значений в table. Возвращает True при успешной загрузке
     function LoadDataFromPorts(): Boolean;
@@ -122,6 +123,7 @@ type
    fU_,fV_:         TExtArray;
    fAd_,fK_:        TIntArray;
 
+   fDataOk: Boolean;
    fDataLength: Integer;// длина загруженных данных
    function LoadDataFromProperties(): Boolean;
    function LoadDataFromJSON(): Boolean;
@@ -454,7 +456,6 @@ begin
 
     // проверяем, упорядочены ли точки. При необходимости - упорядочиваем
     if not TExtArray_IsOrdered(fXarr_data) then begin
-      //ErrorEvent(txtFuncTableReordered, msWarning, VisualObject);
       TExtArray_Sort_XY_Arr(fXarr_data, fYarr_data);
       end;
   end;
@@ -555,7 +556,7 @@ begin
   Result := True;
 end;
 
-function  CheckChanges: Boolean;
+function  CheckChangesAndRefreshData: Boolean;
 // данные на входных портах были изменены?
 // Это Признак для пересчета внутренних матриц функций интерполяции
 var
@@ -622,7 +623,7 @@ begin
     py := fYarr_data.Arr;
 
     // пересчитываем матрицы при необходимости
-    if CheckChanges then begin
+    if (fInputMode=3)and(CheckChangesAndRefreshData()) then begin
       case fInterpolationType of
          1:   // Линейная интерполяция
                 LInterpCalc(px, py, fSplineArr.Arr, fXarr_data.Count );
@@ -679,6 +680,7 @@ begin
   fProp_X1arr:= TExtArray.Create(1);
   fProp_X2arr:= TExtArray.Create(1);
   fProp_DataTable:= TExtArray2.Create(1,1);
+  fFuncDataPort_stamp:= TExtArray.Create(1);
 end;
 
 destructor TInterpolBlockXY.Destroy;
@@ -687,6 +689,7 @@ begin
   FreeAndNil(fProp_X1arr);
   FreeAndNil(fProp_X2arr);
   FreeAndNil(fProp_DataTable);
+  FreeAndNil(fFuncDataPort_stamp);
   inherited;
 end;
 //---------------------------------------------------------------------------
@@ -767,17 +770,15 @@ begin
   N := U[ROW_ARGS_ARR].Count;
   M := U[COL_ARGS_ARR].Count;
 
+  if (M*N<>U[FUNCS_TABLE].Count) then Exit(False);
+
   fTable.Arg1Count := N;
   fTable.Arg2Count := M;
+  fTable.py.ChangeCount(N,M);
 
   TExtArray_cpy(fTable.px1, U[ROW_ARGS_ARR]);
   TExtArray_cpy(fTable.px2, U[COL_ARGS_ARR]);
-
-  fTable.py.ChangeCount(N,M);
-
-  if (M*N<>U[FUNCS_TABLE].Count) then begin
-    exit(False);
-    end;
+  TExtArray_cpy(fFuncDataPort_stamp, U[FUNCS_TABLE]);
 
   for i:=0 to N-1 do begin
     for j:=0 to M-1 do begin
@@ -1067,9 +1068,23 @@ end;
 
 //----------------------------------------------------------------------------
 function TInterpolBlockXY.RunFunc(var at,h : RealType;Action:Integer):NativeInt;
- var
- uInd: integer;
- Yval: RealType;
+procedure RefreshDataFromPorts;
+var
+  a,b,c: Boolean;
+begin
+  a:=TExtArray_IsSame(fTable.px1, U[ROW_ARGS_ARR]);
+  b:=TExtArray_IsSame(fTable.px2, U[COL_ARGS_ARR]);
+  c:=TExtArray_IsSame(fFuncDataPort_stamp, U[FUNCS_TABLE]);
+
+  if (a or b) or c then begin
+    LoadDataFromPorts();
+    TTable2_Sort(fTable);
+    end;
+end;
+
+var
+  uInd: integer;
+  Yval: RealType;
 begin
   Result:=r_Success;
 
@@ -1087,6 +1102,8 @@ begin
     f_RestoreOuts,
     f_GoodStep:
       begin
+        // при задании функции через порты обновляем данные на каждом шаге
+        if(fInputMode=3) then RefreshDataFromPorts;
 
         for uInd:=0 to U[0].Count - 1 do begin
 
@@ -1165,9 +1182,16 @@ begin
   Result:=r_Success;
 
   case Action of
+    i_GetPropErr:
+      begin
+        fDataOk:=False;
+        if not LoadData() then Exit(r_Fail);
+        fDataOk:=True;
+      end;
+
     i_GetCount:
       begin
-        if not LoadData() then Exit(r_Fail);
+        if not fDataOk then Exit(r_Fail);
 
         //Размерность выхода = размерность входа делённая на размерность матрицы абсцисс
         cY[0].Dim:= SetDim([ GetFullDim(cU[0].Dim) div fXtable.CountX ]);

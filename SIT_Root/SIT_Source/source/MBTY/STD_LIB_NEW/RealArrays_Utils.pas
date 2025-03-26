@@ -28,8 +28,8 @@ procedure Save_TExtArray_ToBinFile(aFileName: string; var aArray1: TExtArray);
 procedure TExtArray_cpy(var ADst: TExtArray;const ASrc: TExtArray);
 procedure TExtArray2_cpy(var ADst: TExtArray2;const ASrc: TExtArray2);
 
-function TExtArray_IsSame(const aVect1,aVect2: TExtArray):Boolean;
-
+function TExtArray_IsSame(const aVect1,aVect2: TExtArray): Boolean;
+function TExtArray2_IsSame(const aParam1,aParam2: TExtArray2): Boolean;
 
 function TExtArray2_From_TExtArray(var ADstTable: TExtArray2;const ASrc: TExtArray; XCount,YCount: Integer):Boolean;
 
@@ -39,45 +39,47 @@ uses SysUtils, StrUtils, RealArrays, Math;
 //===========================================================================
 procedure TExtArray_cpy(var ADst: TExtArray;const ASrc: TExtArray);
 // скопировать Asrc->ADst. может изменить память ADst
-var
-  i: Integer;
 begin
-  // TODO - переделать на Move
   ADst.Count := ASrc.Count;
-  for i:=0 to ASrc.Count-1 do begin
-    ADst[i] := ASrc[i];
-    end;
+  Move(Asrc.Arr^[0], ADst.Arr^[0],SizeOfDouble*ADst.Count);
 end;
 //----------------------------------------------------------------------------
 procedure TExtArray2_cpy(var ADst: TExtArray2;const ASrc: TExtArray2);
 // скопировать Asrc->ADst. может изменить память ADst
 var
-  i,j: Integer;
+  i: Integer;
 begin
-  // TODO - переделать на Move
   ADst.ChangeCount(ASrc.CountX, ASrc.GetMaxCountY);
   for i:=0 to ASrc.CountX-1 do begin
     ADst[i].Count := ASrc[i].Count;
-    for j:=0 to ASrc[i].Count-1 do begin
-      ADst[i][j]:= ASrc[i][j];
-      end;
+    Move(ASrc[i].Arr^[0], ADst[i].Arr^[0], ADst[i].Count*SizeOfDouble);
     end;
-
 end;
 
 function TExtArray_IsSame(const aVect1,aVect2: TExtArray):Boolean;
 // массивы одинаковы?
-var
-  i: Integer;
 begin
   if aVect1.Count<>aVect2.Count then Exit(False);
+  Result:=CompareMem(@aVect1.Arr[0],@aVect2.Arr[0],SizeOfDouble*aVect1.Count);
+end;
 
-  for i:=0 to aVect1.Count-1 do
-    if aVect1[i]<>aVect2[i] then Exit(False);
+function TExtArray2_IsSame(const aParam1,aParam2: TExtArray2): Boolean;
+// массивы одинаковы?
+var
+  i,j: Integer;
+begin
+  if aParam1.CountX<> aParam2.CountX then Exit(False);
+
+  for i:=0 to aParam2.CountX-1 do begin
+    if aParam1[i].Count<> aParam2[i].Count then Exit(False);
+
+    for j:=0 to aParam2[i].Count-1 do
+      if aParam1[i][j]<>aParam2[i][j] then Exit(False);
+
+    end;
 
   Result:=True;
 end;
-
 
 function TExtArray_IsOrdered(aArr: TExtArray): Boolean;
 // проверить, упорядочен ли массив
